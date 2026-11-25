@@ -150,24 +150,119 @@ fun ExportSettingsScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
-                    // Format Video 3-card row matching design
+                    // Preview summary pill for chosen vertical ratio & resolution
+                    item {
+                        val shortPx = segment.exportQuality.shortSidePx
+                        val (outW, outH) = when (segment.aspectRatio) {
+                            AspectRatioPreset.VERTICAL_9_16 -> shortPx to ((shortPx * 16f / 9f).toInt() and 0xFFFE)
+                            AspectRatioPreset.PORTRAIT_4_5 -> shortPx to ((shortPx * 5f / 4f).toInt() and 0xFFFE)
+                            AspectRatioPreset.SQUARE_1_1 -> shortPx to shortPx
+                            AspectRatioPreset.LANDSCAPE_16_9 -> ((shortPx * 16f / 9f).toInt() and 0xFFFE) to shortPx
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = CosmicSurfaceElevated,
+                            border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("export_specs_summary_card")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = segment.title,
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = if (segment.aspectRatio == AspectRatioPreset.VERTICAL_9_16 || segment.aspectRatio == AspectRatioPreset.PORTRAIT_4_5) {
+                                            "Format Vertikal • ${segment.aspectRatio.label} • ${segment.exportQuality.label}"
+                                        } else {
+                                            "Format ${segment.aspectRatio.label} • ${segment.exportQuality.label}"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = NeonPurple.copy(alpha = 0.25f),
+                                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = "${outW}×${outH}",
+                                        style = MonoTimecodeStyle.copy(fontWeight = FontWeight.Bold),
+                                        color = FuturisticCyan,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Format Video selection including Vertical 9:16 & 4:5 plus 1:1 & 16:9
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(
-                                text = stringResource(R.string.export_settings_format),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.export_settings_format),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = FuturisticCyan.copy(alpha = 0.14f)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.export_settings_vertical_badge),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = FuturisticCyan,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+
+                            val verticalOptions = listOf(
+                                Triple(AspectRatioPreset.VERTICAL_9_16, "9:16 Vertikal\n(Reels / TikTok)", Icons.Filled.CropPortrait),
+                                Triple(AspectRatioPreset.PORTRAIT_4_5, "4:5 Vertikal\n(Feed IG)", Icons.Filled.CropPortrait)
                             )
-                            val formatOptions = listOf(
-                                Triple(AspectRatioPreset.VERTICAL_9_16, "9:16\n(TikTok)", Icons.Filled.CropPortrait),
-                                Triple(AspectRatioPreset.SQUARE_1_1, "1:1\n(IG)", Icons.Filled.CropSquare),
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                verticalOptions.forEach { (preset, label, icon) ->
+                                    FormatOptionCard(
+                                        label = label,
+                                        icon = icon,
+                                        selected = segment.aspectRatio == preset,
+                                        onClick = { onSelectAspectRatio(preset) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("export_format_${preset.name.lowercase()}")
+                                    )
+                                }
+                            }
+
+                            val otherOptions = listOf(
+                                Triple(AspectRatioPreset.SQUARE_1_1, "1:1\n(Square)", Icons.Filled.CropSquare),
                                 Triple(AspectRatioPreset.LANDSCAPE_16_9, "16:9\n(YouTube)", Icons.Filled.Movie)
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                formatOptions.forEach { (preset, label, icon) ->
+                                otherOptions.forEach { (preset, label, icon) ->
                                     FormatOptionCard(
                                         label = label,
                                         icon = icon,
@@ -182,7 +277,7 @@ fun ExportSettingsScreen(
                         }
                     }
 
-                    // Kualitas 3-pill row matching HD (1080p), 720p, 480p
+                    // Kualitas / Resolusi selection (1080p, 720p, 480p)
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
@@ -196,10 +291,17 @@ fun ExportSettingsScreen(
                             ) {
                                 ExportQuality.entries.forEach { quality ->
                                     val selected = segment.exportQuality == quality
+                                    val shortPx = quality.shortSidePx
+                                    val (qW, qH) = when (segment.aspectRatio) {
+                                        AspectRatioPreset.VERTICAL_9_16 -> shortPx to ((shortPx * 16f / 9f).toInt() and 0xFFFE)
+                                        AspectRatioPreset.PORTRAIT_4_5 -> shortPx to ((shortPx * 5f / 4f).toInt() and 0xFFFE)
+                                        AspectRatioPreset.SQUARE_1_1 -> shortPx to shortPx
+                                        AspectRatioPreset.LANDSCAPE_16_9 -> ((shortPx * 16f / 9f).toInt() and 0xFFFE) to shortPx
+                                    }
                                     Surface(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(54.dp)
+                                            .height(64.dp)
                                             .clip(RoundedCornerShape(14.dp))
                                             .clickable { onSelectQuality(quality) }
                                             .testTag("export_quality_${quality.name.lowercase()}"),
@@ -210,11 +312,23 @@ fun ExportSettingsScreen(
                                             if (selected) FuturisticCyan.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline
                                         )
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
                                             Text(
                                                 text = quality.label,
                                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                                 color = Color.White,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "${qW}×${qH}",
+                                                style = MonoTimecodeStyle,
+                                                color = if (selected) FuturisticCyan else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 textAlign = TextAlign.Center
                                             )
                                         }

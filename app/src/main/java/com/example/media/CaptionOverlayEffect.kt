@@ -18,6 +18,7 @@ import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextureOverlay
+import androidx.media3.effect.TextureOverlay
 import com.example.domain.model.ClipSegment
 import com.example.domain.model.HookOverlayStyle
 import kotlin.math.max
