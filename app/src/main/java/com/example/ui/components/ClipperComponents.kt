@@ -8,6 +8,8 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -91,10 +94,14 @@ import coil.compose.AsyncImage
 import com.example.R
 import com.example.domain.model.AspectRatioPreset
 import com.example.domain.model.ExportProgressState
+import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.SubtitleCue
 import com.example.domain.model.VideoFilterPreset
 import com.example.media.VideoFilterEffects
+import com.example.ui.theme.FuturisticCyan
 import com.example.ui.theme.MonoTimecodeStyle
+import com.example.ui.theme.NeonMagenta
+import com.example.ui.theme.NeonPurple
 import com.example.ui.theme.StudioAmber
 import com.example.ui.theme.StudioAmberContainer
 import com.example.ui.theme.StudioEmerald
@@ -396,11 +403,15 @@ fun VideoClipPlayerPreview(
     overlayHook: String? = null,
     subtitleCues: List<SubtitleCue> = emptyList(),
     showCaptionOverlay: Boolean = false,
+    showIntroHook: Boolean = true,
+    hookDurationMs: Long = 3_000L,
+    hookOverlayStyle: HookOverlayStyle = HookOverlayStyle.NEON_BADGE,
+    selectedMusicTitle: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var isPlaying by remember { mutableStateOf(false) }
-    var currentPosMs by remember { mutableStateOf(startMs) }
+    var currentPosMs by remember { mutableStateOf(0L) }
 
     val exoPlayer = remember(videoUri) {
         ExoPlayer.Builder(context).build().apply {
@@ -552,13 +563,106 @@ fun VideoClipPlayerPreview(
                 )
             }
 
-            // Optional Hook/Timed Subtitle preview overlay
+            // First 3-seconds AI Visual Hook Intro Overlay
+            val showHookNow = showIntroHook &&
+                !overlayHook.isNullOrBlank() &&
+                currentPosMs in 0L..hookDurationMs
+
+            AnimatedVisibility(
+                visible = showHookNow,
+                enter = fadeIn() + scaleIn(initialScale = 0.92f),
+                exit = fadeOut() + scaleOut(targetScale = 0.96f),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 48.dp, start = 14.dp, end = 14.dp)
+            ) {
+                val (hookBg, hookBorder, hookAccent) = when (hookOverlayStyle) {
+                    HookOverlayStyle.NEON_BADGE -> Triple(
+                        Color(0xE0180C36),
+                        NeonPurple,
+                        FuturisticCyan
+                    )
+                    HookOverlayStyle.CYBER_BANNER -> Triple(
+                        Color(0xE0081C38),
+                        FuturisticCyan,
+                        StudioAmber
+                    )
+                    HookOverlayStyle.MINIMAL_BOLD -> Triple(
+                        Color(0xDC0C0E16),
+                        NeonMagenta,
+                        NeonMagenta
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = hookBg,
+                    border = BorderStroke(1.5.dp, hookBorder),
+                    modifier = Modifier.testTag("preview_intro_hook_overlay")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = "HOOK 0-${(hookDurationMs / 1000L).coerceAtLeast(1L)} DETIK",
+                            style = MonoTimecodeStyle.copy(fontWeight = FontWeight.Bold),
+                            color = hookAccent
+                        )
+                        Text(
+                            text = overlayHook.orEmpty(),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            // Selected background music pill (bottom-top above subtitles when selected)
+            if (!selectedMusicTitle.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.72f),
+                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.55f)),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 10.dp)
+                        .testTag("preview_music_badge")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MusicNote,
+                            contentDescription = null,
+                            tint = FuturisticCyan,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = selectedMusicTitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 140.dp)
+                        )
+                    }
+                }
+            }
+
+            // Optional Timed Subtitle preview overlay
             val activeCue = remember(currentPosMs, subtitleCues) {
                 subtitleCues.firstOrNull { cue ->
                     currentPosMs in cue.startMs..cue.endMs
                 } ?: subtitleCues.firstOrNull()
             }
-            val displayOverlayText = activeCue?.text?.takeIf { it.isNotBlank() } ?: overlayHook
+            val displayOverlayText = activeCue?.text?.takeIf { it.isNotBlank() }
+                ?: if (!showIntroHook) overlayHook else null
 
             if (showCaptionOverlay && !displayOverlayText.isNullOrBlank()) {
                 Box(

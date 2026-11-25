@@ -10,6 +10,7 @@ import com.example.domain.model.ClipProject
 import com.example.domain.model.ClipSegment
 import com.example.domain.model.ExportQuality
 import com.example.domain.model.ExportedClip
+import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.SubtitleCue
 import com.example.domain.model.TargetPlatform
 import com.example.domain.model.VideoFilterPreset
@@ -62,7 +63,16 @@ data class ClipSegmentEntity(
     val videoFilterName: String = VideoFilterPreset.NONE.name,
     val brightness: Float = 0f,
     val showSubtitles: Boolean,
+    val showIntroHook: Boolean = true,
+    val hookDurationMs: Long = 3_000L,
+    val hookOverlayStyleName: String = HookOverlayStyle.NEON_BADGE.name,
     val includeAudio: Boolean = true,
+    val selectedMusicTrackId: String? = null,
+    val selectedMusicTitle: String? = null,
+    val selectedMusicUrl: String? = null,
+    val musicVolume: Float = 0.35f,
+    val audioMoodLabel: String? = null,
+    val audioBpm: Int? = null,
     val exportQualityName: String = ExportQuality.HD_1080P.name,
     val isFavorite: Boolean = false,
     val subtitleCuesJson: String = "",
@@ -137,7 +147,17 @@ fun ClipSegmentEntity.toDomain(): ClipSegment = ClipSegment(
         .getOrDefault(VideoFilterPreset.NONE),
     brightness = brightness.coerceIn(-0.5f, 0.5f),
     showSubtitles = showSubtitles,
+    showIntroHook = showIntroHook,
+    hookDurationMs = hookDurationMs.coerceIn(1_500L, 5_000L),
+    hookOverlayStyle = runCatching { HookOverlayStyle.valueOf(hookOverlayStyleName) }
+        .getOrDefault(HookOverlayStyle.NEON_BADGE),
     includeAudio = includeAudio,
+    selectedMusicTrackId = selectedMusicTrackId,
+    selectedMusicTitle = selectedMusicTitle,
+    selectedMusicUrl = selectedMusicUrl,
+    musicVolume = musicVolume.coerceIn(0.05f, 1.0f),
+    audioMoodLabel = audioMoodLabel,
+    audioBpm = audioBpm,
     exportQuality = runCatching { ExportQuality.valueOf(exportQualityName) }
         .getOrDefault(ExportQuality.HD_1080P),
     isFavorite = isFavorite,
@@ -161,7 +181,16 @@ fun ClipSegment.toEntity(): ClipSegmentEntity = ClipSegmentEntity(
     videoFilterName = videoFilter.name,
     brightness = brightness.coerceIn(-0.5f, 0.5f),
     showSubtitles = showSubtitles,
+    showIntroHook = showIntroHook,
+    hookDurationMs = hookDurationMs.coerceIn(1_500L, 5_000L),
+    hookOverlayStyleName = hookOverlayStyle.name,
     includeAudio = includeAudio,
+    selectedMusicTrackId = selectedMusicTrackId,
+    selectedMusicTitle = selectedMusicTitle,
+    selectedMusicUrl = selectedMusicUrl,
+    musicVolume = musicVolume.coerceIn(0.05f, 1.0f),
+    audioMoodLabel = audioMoodLabel,
+    audioBpm = audioBpm,
     exportQualityName = exportQuality.name,
     isFavorite = isFavorite,
     subtitleCuesJson = encodeSubtitleCues(subtitleCues),

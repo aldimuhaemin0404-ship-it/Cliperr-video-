@@ -394,6 +394,12 @@ fun AiClipperApp(
                                     onImportSourceChanged = viewModel::updateImportSource,
                                     onLinkInputChanged = viewModel::updateLinkInput,
                                     onResolveSocialLink = { viewModel.resolveSocialLink() },
+                                    onEnqueueSingleUrl = { url ->
+                                        viewModel.enqueueSocialLinks(url)
+                                        navController.navigate(ROUTE_BATCH_QUEUE) {
+                                            launchSingleTop = true
+                                        }
+                                    },
                                     onVideoPicked = viewModel::onVideoSelected,
                                     onEnqueueMultipleVideos = { uris ->
                                         viewModel.enqueueGalleryVideos(uris)
@@ -567,6 +573,16 @@ fun AiClipperApp(
                                     onResetFilters = viewModel::resetEditorFilters,
                                     onToggleSubtitles = viewModel::toggleEditorSubtitles,
                                     onToggleIncludeAudio = viewModel::toggleEditorIncludeAudio,
+                                    onToggleIntroHook = viewModel::toggleEditorIntroHook,
+                                    onUpdateHookDuration = viewModel::updateEditorHookDuration,
+                                    onUpdateHookStyle = viewModel::updateEditorHookStyle,
+                                    onGenerateVisualHook = viewModel::generateVisualHookForActiveSegment,
+                                    onAnalyzeAudioMusic = viewModel::analyzeAudioAndRecommendMusicForActiveSegment,
+                                    onSelectMusicTrack = viewModel::selectMusicTrackForEditor,
+                                    onSelectCustomMusicUrl = viewModel::selectCustomMusicUrlForEditor,
+                                    onToggleMusicPreview = viewModel::toggleMusicPreview,
+                                    onStopMusicPreview = viewModel::stopMusicPreview,
+                                    onUpdateMusicVolume = viewModel::updateEditorMusicVolume,
                                     onUpdateHook = viewModel::updateEditorHook,
                                     onUpdateCaption = viewModel::updateEditorCaption,
                                     onRegenerateCaption = viewModel::regenerateCaptionWithTone,
@@ -610,6 +626,7 @@ fun AiClipperApp(
                                     onSelectQuality = viewModel::updateEditorExportQuality,
                                     onToggleSubtitles = viewModel::toggleEditorSubtitles,
                                     onToggleIncludeAudio = viewModel::toggleEditorIncludeAudio,
+                                    onToggleMusic = viewModel::toggleAutoMusicOnExportSettings,
                                     onToggleAutoOpenShareSheet = viewModel::setAutoOpenShareSheet,
                                     onStartExport = { seg, sourceUri ->
                                         viewModel.exportSegment(seg, sourceUri)

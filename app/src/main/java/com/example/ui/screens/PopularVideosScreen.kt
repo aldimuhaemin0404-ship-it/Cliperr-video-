@@ -104,8 +104,11 @@ fun PopularVideosScreen(
     val isUrlInput = searchQuery.contains("http://", ignoreCase = true) ||
         searchQuery.contains("https://", ignoreCase = true) ||
         searchQuery.contains("youtu.be", ignoreCase = true) ||
+        searchQuery.contains("youtube.com", ignoreCase = true) ||
         searchQuery.contains("tiktok.com", ignoreCase = true) ||
-        searchQuery.contains("instagram.com", ignoreCase = true)
+        searchQuery.contains("instagram.com", ignoreCase = true) ||
+        searchQuery.contains(".mp4", ignoreCase = true) ||
+        searchQuery.contains(".m3u8", ignoreCase = true)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),

@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Clear
@@ -125,6 +126,7 @@ fun StudioScreen(
     onImportSourceChanged: (StudioImportSource) -> Unit,
     onLinkInputChanged: (String) -> Unit,
     onResolveSocialLink: () -> Unit,
+    onEnqueueSingleUrl: (String) -> Unit,
     onVideoPicked: (Uri) -> Unit,
     onEnqueueMultipleVideos: (List<Uri>) -> Unit,
     onOpenBatchQueue: () -> Unit,
@@ -205,6 +207,10 @@ fun StudioScreen(
                 SourcePickerGrid(
                     activeSource = studioState.importSource,
                     onPickGallery = launchPhotoPicker,
+                    onAddCustomUrl = {
+                        selectedLinkHint = "https://example.com/video.mp4 atau link sosmed…"
+                        onImportSourceChanged(StudioImportSource.SOCIAL_LINK)
+                    },
                     onPickYouTube = {
                         selectedLinkHint = "https://youtu.be/... atau youtube.com/watch?v=..."
                         onImportSourceChanged(StudioImportSource.SOCIAL_LINK)
@@ -236,7 +242,8 @@ fun StudioScreen(
                         placeholderHint = selectedLinkHint,
                         isLoading = studioState.isLoadingVideo,
                         onLinkInputChanged = onLinkInputChanged,
-                        onResolveClick = onResolveSocialLink
+                        onResolveClick = onResolveSocialLink,
+                        onEnqueueUrl = { onEnqueueSingleUrl(studioState.linkInput) }
                     )
                 }
             }
@@ -514,16 +521,58 @@ private fun StudioHeroCard(
 private fun SourcePickerGrid(
     activeSource: StudioImportSource,
     onPickGallery: () -> Unit,
+    onAddCustomUrl: () -> Unit,
     onPickYouTube: () -> Unit,
     onPickTikTok: () -> Unit,
     onPickInstagram: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = stringResource(R.string.home_pick_source_title),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = Color.White
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.home_pick_source_title),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (activeSource == StudioImportSource.SOCIAL_LINK) {
+                    FuturisticCyan.copy(alpha = 0.22f)
+                } else {
+                    NeonPurple.copy(alpha = 0.2f)
+                },
+                border = BorderStroke(
+                    1.dp,
+                    if (activeSource == StudioImportSource.SOCIAL_LINK) FuturisticCyan else NeonPurple
+                ),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable(onClick = onAddCustomUrl)
+                    .minimumInteractiveComponentSize()
+                    .testTag("home_add_url_chip")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AddLink,
+                        contentDescription = null,
+                        tint = FuturisticCyan,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.home_add_url_cta),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -905,7 +954,8 @@ private fun SocialLinkImportCard(
     placeholderHint: String,
     isLoading: Boolean,
     onLinkInputChanged: (String) -> Unit,
-    onResolveClick: () -> Unit
+    onResolveClick: () -> Unit,
+    onEnqueueUrl: () -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
     val supportedPlatforms = listOf("YouTube", "TikTok", "Instagram", "Facebook", "X / Twitter", "Threads", "Vimeo", "URL .mp4")
@@ -1006,37 +1056,69 @@ private fun SocialLinkImportCard(
                     .testTag("social_link_input")
             )
 
-            Button(
-                onClick = onResolveClick,
-                enabled = linkInput.isNotBlank() && !isLoading,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = NeonPurple,
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("fetch_social_link_button")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.size(10.dp))
-                    Text(stringResource(R.string.studio_link_fetching))
-                } else {
+                Button(
+                    onClick = onResolveClick,
+                    enabled = linkInput.isNotBlank() && !isLoading,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NeonPurple,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .weight(1.4f)
+                        .height(48.dp)
+                        .testTag("fetch_social_link_button")
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(stringResource(R.string.studio_link_fetching), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.Link,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Text(
+                            text = stringResource(R.string.studio_link_fetch_button),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onEnqueueUrl,
+                    enabled = linkInput.isNotBlank() && !isLoading,
+                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .weight(0.9f)
+                        .height(48.dp)
+                        .testTag("enqueue_single_url_button")
+                ) {
                     Icon(
-                        imageVector = Icons.Filled.Link,
+                        imageVector = Icons.Filled.QueuePlayNext,
                         contentDescription = null,
+                        tint = FuturisticCyan,
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.size(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = stringResource(R.string.studio_link_fetch_button),
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                        text = stringResource(R.string.home_quick_url_add_batch),
+                        color = FuturisticCyan,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

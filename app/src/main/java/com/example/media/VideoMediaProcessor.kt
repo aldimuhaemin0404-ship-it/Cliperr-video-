@@ -16,10 +16,14 @@ import androidx.annotation.OptIn
 import androidx.core.content.FileProvider
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.ChannelMixingAudioProcessor
+import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -166,104 +170,187 @@ class VideoMediaProcessor(private val context: Context) {
         segment: ClipSegment,
         onProgress: (Int) -> Unit,
         onTransformerCreated: (Transformer) -> Unit = {}
-    ): ExportedClip = withContext(Dispatchers.Main) {
-        val clipsDir = File(context.filesDir, "clips").apply {
-            if (!exists()) mkdirs()
+    ): ExportedClip {
+        val resolvedMusicUri = if (!segment.selectedMusicUrl.isNullOrBlank()) {
+            runCatching {
+                RoyaltyFreeMusicCatalog.resolvePlayableAudioUri(
+                    context = context,
+                    audioUrl = segment.selectedMusicUrl,
+                    trackId = segment.selectedMusicTrackId,
+                    minDurationMs = segment.durationMs.coerceAtLeast(5_000L)
+                )
+            }.getOrNull()
+        } else {
+            null
         }
-        val safeTitle = segment.title
-            .replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
-            .take(28)
-            .ifBlank { "clip" }
-        val outputFile = File(clipsDir, "${safeTitle}_${System.currentTimeMillis()}.mp4")
 
-        val clippingConfig = MediaItem.ClippingConfiguration.Builder()
-            .setStartPositionMs(segment.startMs.coerceAtLeast(0L))
-            .setEndPositionMs(segment.endMs.coerceAtLeast(segment.startMs + 500L))
+        return withContext(Dispatchers.Main) {
+            val clipsDir = File(context.filesDir, "clips").apply {
+                if (!exists()) mkdirs()
+            }
+            val safeTitle = segment.title
+                .replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
+                .take(28)
+                .ifBlank { "clip" }
+            val outputFile = File(clipsDir, "${safeTitle}_${System.currentTimeMillis()}.mp4")
+
+            val clippingConfig = MediaItem.ClippingConfiguration.Builder()
+                .setStartPositionMs(segment.startMs.coerceAtLeast(0L))
+                .setEndPositionMs(segment.endMs.coerceAtLeast(segment.startMs + 500L))
+                .build()
+
+            val inputMediaItem = MediaItem.Builder()
+                .setUri(sourceUri)
+                .setClippingConfiguration(clippingConfig)
+                .build()
+
+            val overlayEffect = CaptionOverlayEffects.buildOverlayEffect(segment)
+            val videoEffects: List<Effect> = buildAspectRatioEffects(segment.aspectRatio, segment.exportQuality) +
+                VideoFilterEffects.buildEffects(segment.videoFilter, segment.brightness) +
+                listOfNotNull(overlayEffect)
+            val editedMediaItem = EditedMediaItem.Builder(inputMediaItem)
+                .setRemoveAudio(!segment.includeAudio)
+                .setEffects(Effects(emptyList(), videoEffects))
+                .build()
+
+            try {
+                if (resolvedMusicUri != null) {
+                    val musicComposition = buildMusicMixComposition(
+                        videoItem = editedMediaItem,
+                        musicUri = resolvedMusicUri,
+                        musicVolume = segment.musicVolume
+                    )
+                    try {
+                        runTransformer(
+                            outputFile = outputFile,
+                            onProgress = onProgress,
+                            onTransformerCreated = onTransformerCreated
+                        ) { transformer ->
+                            transformer.start(musicComposition, outputFile.absolutePath)
+                        }
+                    } catch (musicMixException: Throwable) {
+                        if (musicMixException is kotlinx.coroutines.CancellationException) throw musicMixException
+                        if (outputFile.exists()) outputFile.delete()
+                        runTransformer(
+                            outputFile = outputFile,
+                            onProgress = onProgress,
+                            onTransformerCreated = onTransformerCreated
+                        ) { transformer ->
+                            transformer.start(editedMediaItem, outputFile.absolutePath)
+                        }
+                    }
+                } else {
+                    runTransformer(
+                        outputFile = outputFile,
+                        onProgress = onProgress,
+                        onTransformerCreated = onTransformerCreated
+                    ) { transformer ->
+                        transformer.start(editedMediaItem, outputFile.absolutePath)
+                    }
+                }
+
+                val galleryUri = runCatching {
+                    saveFileToGallery(outputFile, segment.durationMs)
+                }.getOrNull()
+
+                ExportedClip(
+                    projectId = segment.projectId,
+                    segmentId = segment.id,
+                    title = segment.title,
+                    filePath = outputFile.absolutePath,
+                    durationMs = segment.durationMs,
+                    fileSizeBytes = outputFile.length(),
+                    aspectRatio = segment.aspectRatio,
+                    galleryUri = galleryUri?.toString(),
+                    exportedAtMs = System.currentTimeMillis()
+                )
+            } catch (t: Throwable) {
+                if (outputFile.exists()) outputFile.delete()
+                throw t
+            }
+        }
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun buildMusicMixComposition(
+        videoItem: EditedMediaItem,
+        musicUri: Uri,
+        musicVolume: Float
+    ): Composition {
+        val vol = musicVolume.coerceIn(0.05f, 1.0f)
+        val volumeProcessor = ChannelMixingAudioProcessor().apply {
+            putChannelMixingMatrix(ChannelMixingMatrix.create(2, 2).scaleBy(vol))
+            putChannelMixingMatrix(ChannelMixingMatrix.create(1, 2).scaleBy(vol))
+        }
+        val audioProcessors: List<AudioProcessor> = listOf(volumeProcessor)
+        val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(musicUri))
+            .setRemoveVideo(true)
+            .setEffects(Effects(audioProcessors, emptyList()))
             .build()
 
-        val inputMediaItem = MediaItem.Builder()
-            .setUri(sourceUri)
-            .setClippingConfiguration(clippingConfig)
+        val videoSequence = EditedMediaItemSequence.Builder(listOf(videoItem)).build()
+        val musicSequence = EditedMediaItemSequence.Builder(listOf(musicItem))
+            .setIsLooping(true)
             .build()
 
-        val overlayEffect = CaptionOverlayEffects.buildOverlayEffect(segment)
-        val videoEffects: List<Effect> = buildAspectRatioEffects(segment.aspectRatio, segment.exportQuality) +
-            VideoFilterEffects.buildEffects(segment.videoFilter, segment.brightness) +
-            listOfNotNull(overlayEffect)
-        val editedMediaItem = EditedMediaItem.Builder(inputMediaItem)
-            .setRemoveAudio(!segment.includeAudio)
-            .setEffects(Effects(emptyList(), videoEffects))
-            .build()
+        return Composition.Builder(listOf(videoSequence, musicSequence)).build()
+    }
 
+    @OptIn(UnstableApi::class)
+    private suspend fun runTransformer(
+        outputFile: File,
+        onProgress: (Int) -> Unit,
+        onTransformerCreated: (Transformer) -> Unit,
+        startBlock: (Transformer) -> Unit
+    ): ExportResult {
         val mainHandler = Handler(Looper.getMainLooper())
         var progressRunnable: Runnable? = null
 
-        try {
-            suspendCancellableCoroutine<ExportResult> { continuation ->
-                val listener = object : Transformer.Listener {
-                    override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                        progressRunnable?.let { mainHandler.removeCallbacks(it) }
-                        onProgress(100)
-                        if (continuation.isActive) continuation.resume(exportResult)
-                    }
-
-                    override fun onError(
-                        composition: Composition,
-                        exportResult: ExportResult,
-                        exportException: ExportException
-                    ) {
-                        progressRunnable?.let { mainHandler.removeCallbacks(it) }
-                        if (continuation.isActive) continuation.resumeWithException(exportException)
-                    }
-                }
-
-                val transformer = Transformer.Builder(context)
-                    .addListener(listener)
-                    .build()
-
-                onTransformerCreated(transformer)
-                transformer.start(editedMediaItem, outputFile.absolutePath)
-
-                val progressHolder = ProgressHolder()
-                val runnable = object : Runnable {
-                    override fun run() {
-                        val state = transformer.getProgress(progressHolder)
-                        if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
-                            onProgress(progressHolder.progress.coerceIn(0, 99))
-                        }
-                        if (state != Transformer.PROGRESS_STATE_NOT_STARTED && continuation.isActive) {
-                            mainHandler.postDelayed(this, 250L)
-                        }
-                    }
-                }
-                progressRunnable = runnable
-                mainHandler.post(runnable)
-
-                continuation.invokeOnCancellation {
+        return suspendCancellableCoroutine { continuation ->
+            val listener = object : Transformer.Listener {
+                override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     progressRunnable?.let { mainHandler.removeCallbacks(it) }
-                    transformer.cancel()
-                    if (outputFile.exists()) outputFile.delete()
+                    onProgress(100)
+                    if (continuation.isActive) continuation.resume(exportResult)
+                }
+
+                override fun onError(
+                    composition: Composition,
+                    exportResult: ExportResult,
+                    exportException: ExportException
+                ) {
+                    progressRunnable?.let { mainHandler.removeCallbacks(it) }
+                    if (continuation.isActive) continuation.resumeWithException(exportException)
                 }
             }
 
-            val galleryUri = runCatching {
-                saveFileToGallery(outputFile, segment.durationMs)
-            }.getOrNull()
+            val transformer = Transformer.Builder(context)
+                .addListener(listener)
+                .build()
 
-            ExportedClip(
-                projectId = segment.projectId,
-                segmentId = segment.id,
-                title = segment.title,
-                filePath = outputFile.absolutePath,
-                durationMs = segment.durationMs,
-                fileSizeBytes = outputFile.length(),
-                aspectRatio = segment.aspectRatio,
-                galleryUri = galleryUri?.toString(),
-                exportedAtMs = System.currentTimeMillis()
-            )
-        } catch (t: Throwable) {
-            if (outputFile.exists()) outputFile.delete()
-            throw t
+            onTransformerCreated(transformer)
+            startBlock(transformer)
+
+            val progressHolder = ProgressHolder()
+            val runnable = object : Runnable {
+                override fun run() {
+                    val state = transformer.getProgress(progressHolder)
+                    if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
+                        onProgress(progressHolder.progress.coerceIn(0, 99))
+                    }
+                    if (state != Transformer.PROGRESS_STATE_NOT_STARTED && continuation.isActive) {
+                        mainHandler.postDelayed(this, 250L)
+                    }
+                }
+            }
+            progressRunnable = runnable
+            mainHandler.post(runnable)
+
+            continuation.invokeOnCancellation {
+                progressRunnable?.let { mainHandler.removeCallbacks(it) }
+                transformer.cancel()
+                if (outputFile.exists()) outputFile.delete()
+            }
         }
     }
 

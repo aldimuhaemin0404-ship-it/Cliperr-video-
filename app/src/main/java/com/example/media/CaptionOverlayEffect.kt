@@ -17,7 +17,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.StaticOverlaySettings
+import androidx.media3.effect.TextureOverlay
 import com.example.domain.model.ClipSegment
+import com.example.domain.model.HookOverlayStyle
 import kotlin.math.max
 import kotlin.math.min
 
@@ -25,10 +27,178 @@ import kotlin.math.min
 object CaptionOverlayEffects {
 
     fun buildOverlayEffect(segment: ClipSegment): OverlayEffect? {
-        if (!segment.showSubtitles) return null
-        val hasContent = segment.subtitleCues.any { it.text.isNotBlank() } || segment.hookLine.isNotBlank()
-        if (!hasContent) return null
-        return OverlayEffect(listOf(CaptionBitmapOverlay(segment)))
+        val overlays = mutableListOf<TextureOverlay>()
+
+        if (segment.showIntroHook && segment.hookLine.isNotBlank()) {
+            overlays += IntroHookBitmapOverlay(segment)
+        }
+
+        val hasSubtitlesContent = segment.subtitleCues.any { it.text.isNotBlank() } ||
+            (!segment.showIntroHook && segment.hookLine.isNotBlank())
+        if (segment.showSubtitles && hasSubtitlesContent) {
+            overlays += CaptionBitmapOverlay(segment)
+        }
+
+        if (overlays.isEmpty()) return null
+        return OverlayEffect(overlays)
+    }
+}
+
+@OptIn(UnstableApi::class)
+private class IntroHookBitmapOverlay(
+    private val segment: ClipSegment
+) : BitmapOverlay() {
+
+    private var videoSize: Size = Size(1080, 1920)
+    private var firstPtsUs: Long? = null
+    private var cachedBitmap: Bitmap? = null
+
+    private val emptyBitmap: Bitmap by lazy {
+        Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.TRANSPARENT)
+        }
+    }
+
+    private val overlaySettings: StaticOverlaySettings = StaticOverlaySettings.Builder()
+        .setBackgroundFrameAnchor(0f, 0.56f)
+        .setOverlayFrameAnchor(0f, 0f)
+        .build()
+
+    override fun configure(videoSize: Size) {
+        super.configure(videoSize)
+        if (videoSize.width > 0 && videoSize.height > 0) {
+            this.videoSize = videoSize
+        }
+        cachedBitmap?.let { if (!it.isRecycled) it.recycle() }
+        cachedBitmap = null
+    }
+
+    override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings = overlaySettings
+
+    override fun getBitmap(presentationTimeUs: Long): Bitmap {
+        val baseUs = firstPtsUs ?: presentationTimeUs.also { firstPtsUs = it }
+        val relativeMs = ((presentationTimeUs - baseUs) / 1000L).coerceAtLeast(0L)
+        if (relativeMs > segment.hookDurationMs) {
+            return emptyBitmap
+        }
+        val cleanText = segment.hookLine.trim()
+        if (cleanText.isEmpty()) {
+            return emptyBitmap
+        }
+        val existing = cachedBitmap
+        if (existing != null && !existing.isRecycled) {
+            return existing
+        }
+        return renderHookBitmap(
+            text = cleanText,
+            style = segment.hookOverlayStyle,
+            frameWidth = videoSize.width,
+            frameHeight = videoSize.height
+        ).also { cachedBitmap = it }
+    }
+
+    override fun release() {
+        super.release()
+        cachedBitmap?.let { if (!it.isRecycled) it.recycle() }
+        cachedBitmap = null
+    }
+
+    private fun renderHookBitmap(
+        text: String,
+        style: HookOverlayStyle,
+        frameWidth: Int,
+        frameHeight: Int
+    ): Bitmap {
+        val safeW = frameWidth.coerceAtLeast(360)
+        val safeH = frameHeight.coerceAtLeast(360)
+        val minDim = min(safeW, safeH).toFloat()
+
+        val textSizePx = (minDim * 0.048f).coerceIn(24f, 60f)
+        val badgeTextSizePx = (textSizePx * 0.56f).coerceIn(14f, 30f)
+        val hPadding = (textSizePx * 0.80f).toInt().coerceAtLeast(18)
+        val vPadding = (textSizePx * 0.52f).toInt().coerceAtLeast(12)
+        val maxContentWidth = ((safeW * 0.86f).toInt() - hPadding * 2).coerceAtLeast(180)
+
+        val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = textSizePx
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            setShadowLayer(5f, 0f, 2f, Color.argb(190, 0, 0, 0))
+        }
+
+        val badgeText = "HOOK 0-${(segment.hookDurationMs / 1000L).coerceAtLeast(1L)}S"
+        val badgePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = when (style) {
+                HookOverlayStyle.NEON_BADGE -> Color.rgb(0, 229, 255)
+                HookOverlayStyle.CYBER_BANNER -> Color.rgb(255, 214, 102)
+                HookOverlayStyle.MINIMAL_BOLD -> Color.rgb(244, 114, 182)
+            }
+            textSize = badgeTextSizePx
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            letterSpacing = 0.08f
+        }
+
+        val layout = createCenteredStaticLayout(text, textPaint, maxContentWidth)
+
+        var maxLineWidth = badgePaint.measureText(badgeText)
+        for (i in 0 until layout.lineCount) {
+            maxLineWidth = max(maxLineWidth, layout.getLineWidth(i))
+        }
+
+        val badgeHeight = (badgeTextSizePx * 1.35f).toInt()
+        val boxWidth = (maxLineWidth.toInt() + hPadding * 2).coerceIn(160, (safeW * 0.90f).toInt())
+        val boxHeight = (layout.height + badgeHeight + vPadding * 2 + 8).coerceAtMost((safeH * 0.40f).toInt())
+
+        val bitmap = Bitmap.createBitmap(boxWidth, boxHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val rect = RectF(3f, 3f, boxWidth - 3f, boxHeight - 3f)
+        val cornerRadius = when (style) {
+            HookOverlayStyle.NEON_BADGE -> (textSizePx * 0.56f).coerceIn(14f, 32f)
+            HookOverlayStyle.CYBER_BANNER -> (textSizePx * 0.28f).coerceIn(8f, 18f)
+            HookOverlayStyle.MINIMAL_BOLD -> (textSizePx * 0.38f).coerceIn(10f, 22f)
+        }
+
+        val bgColor = when (style) {
+            HookOverlayStyle.NEON_BADGE -> Color.argb(230, 24, 12, 54)
+            HookOverlayStyle.CYBER_BANNER -> Color.argb(232, 8, 28, 56)
+            HookOverlayStyle.MINIMAL_BOLD -> Color.argb(218, 12, 14, 22)
+        }
+        val borderColor = when (style) {
+            HookOverlayStyle.NEON_BADGE -> Color.argb(235, 168, 85, 247)
+            HookOverlayStyle.CYBER_BANNER -> Color.argb(240, 0, 229, 255)
+            HookOverlayStyle.MINIMAL_BOLD -> Color.argb(210, 236, 72, 153)
+        }
+
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.style = Paint.Style.FILL
+            color = bgColor
+        }
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.style = Paint.Style.STROKE
+            strokeWidth = (textSizePx * 0.08f).coerceIn(2.5f, 5f)
+            color = borderColor
+        }
+
+        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
+        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, borderPaint)
+
+        // Draw tiny top tag + hook body text centered
+        val badgeW = badgePaint.measureText(badgeText)
+        canvas.drawText(
+            badgeText,
+            (boxWidth - badgeW) / 2f,
+            vPadding + badgeTextSizePx,
+            badgePaint
+        )
+
+        canvas.save()
+        val textOffsetX = (boxWidth - layout.width) / 2f
+        val textOffsetY = (vPadding + badgeHeight + 6).toFloat()
+        canvas.translate(textOffsetX, textOffsetY)
+        layout.draw(canvas)
+        canvas.restore()
+
+        return bitmap
     }
 }
 
@@ -102,6 +272,7 @@ private class CaptionBitmapOverlay(
                 ?: cues.lastOrNull { it.startMs <= relativeMs }?.text
                 ?: cues.firstOrNull()?.text
         }
+        if (segment.showIntroHook) return null
         return segment.hookLine.takeIf { it.isNotBlank() }
     }
 
@@ -126,25 +297,7 @@ private class CaptionBitmapOverlay(
             setShadowLayer(4f, 0f, 2f, Color.argb(180, 0, 0, 0))
         }
 
-        val layout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            StaticLayout.Builder
-                .obtain(text, 0, text.length, textPaint, maxContentWidth)
-                .setAlignment(Layout.Alignment.ALIGN_CENTER)
-                .setLineSpacing(0f, 1.15f)
-                .setIncludePad(false)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            StaticLayout(
-                text,
-                textPaint,
-                maxContentWidth,
-                Layout.Alignment.ALIGN_CENTER,
-                1.15f,
-                0f,
-                false
-            )
-        }
+        val layout = createCenteredStaticLayout(text, textPaint, maxContentWidth)
 
         var maxLineWidth = 0f
         for (i in 0 until layout.lineCount) {
@@ -180,5 +333,31 @@ private class CaptionBitmapOverlay(
         canvas.restore()
 
         return bitmap
+    }
+}
+
+private fun createCenteredStaticLayout(
+    text: String,
+    textPaint: TextPaint,
+    maxContentWidth: Int
+): StaticLayout {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        StaticLayout.Builder
+            .obtain(text, 0, text.length, textPaint, maxContentWidth)
+            .setAlignment(Layout.Alignment.ALIGN_CENTER)
+            .setLineSpacing(0f, 1.15f)
+            .setIncludePad(false)
+            .build()
+    } else {
+        @Suppress("DEPRECATION")
+        StaticLayout(
+            text,
+            textPaint,
+            maxContentWidth,
+            Layout.Alignment.ALIGN_CENTER,
+            1.15f,
+            0f,
+            false
+        )
     }
 }

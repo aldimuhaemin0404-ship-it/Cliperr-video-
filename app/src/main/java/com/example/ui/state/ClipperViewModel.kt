@@ -14,6 +14,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.ClipProjectRepository
 import com.example.data.network.SocialLinkResolver
 import com.example.domain.model.AspectRatioPreset
+import com.example.domain.model.AudioAnalysisSummary
 import com.example.domain.model.BatchItemStatus
 import com.example.domain.model.BatchQueueConfig
 import com.example.domain.model.BatchQueueItem
@@ -23,11 +24,16 @@ import com.example.domain.model.ClipSegment
 import com.example.domain.model.ExportProgressState
 import com.example.domain.model.ExportQuality
 import com.example.domain.model.ExportedClip
+import com.example.domain.model.HookOverlayStyle
+import com.example.domain.model.MusicMood
+import com.example.domain.model.MusicTrackRecommendation
 import com.example.domain.model.PopularVideoItem
 import com.example.domain.model.StudioImportSource
 import com.example.domain.model.TargetPlatform
 import com.example.domain.model.VideoFilterPreset
 import com.example.domain.model.VideoMetadata
+import com.example.media.AudioMoodAnalyzer
+import com.example.media.RoyaltyFreeMusicCatalog
 import com.example.media.SocialShareHelper
 import com.example.media.VideoMediaProcessor
 import com.example.ui.components.ShareSheetUiState
@@ -76,6 +82,13 @@ data class EditorUiState(
     val isLoading: Boolean = false,
     val isRegeneratingCaption: Boolean = false,
     val isGeneratingSubtitles: Boolean = false,
+    val isAnalyzingAudio: Boolean = false,
+    val isGeneratingHook: Boolean = false,
+    val audioAnalysis: AudioAnalysisSummary? = null,
+    val recommendedTracks: List<MusicTrackRecommendation> = RoyaltyFreeMusicCatalog.catalog,
+    val hookRationale: String? = null,
+    val previewingTrackId: String? = null,
+    val previewTrackUri: Uri? = null,
     val isPlaceholderAi: Boolean = true,
     val errorMessage: String? = null
 )
@@ -793,6 +806,255 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
         _editorState.update { state ->
             val seg = state.segment ?: return@update state
             state.copy(segment = seg.copy(exportQuality = quality))
+        }
+    }
+
+    fun toggleEditorIntroHook(show: Boolean) {
+        _editorState.update { state ->
+            val seg = state.segment ?: return@update state
+            state.copy(segment = seg.copy(showIntroHook = show))
+        }
+    }
+
+    fun updateEditorHookDuration(durationMs: Long) {
+        _editorState.update { state ->
+            val seg = state.segment ?: return@update state
+            state.copy(segment = seg.copy(hookDurationMs = durationMs.coerceIn(1_500L, 5_000L)))
+        }
+    }
+
+    fun updateEditorHookStyle(style: HookOverlayStyle) {
+        _editorState.update { state ->
+            val seg = state.segment ?: return@update state
+            state.copy(segment = seg.copy(hookOverlayStyle = style))
+        }
+    }
+
+    fun updateEditorMusicVolume(volume: Float) {
+        _editorState.update { state ->
+            val seg = state.segment ?: return@update state
+            state.copy(segment = seg.copy(musicVolume = volume.coerceIn(0.05f, 1.0f)))
+        }
+    }
+
+    fun selectMusicTrackForEditor(track: MusicTrackRecommendation?) {
+        var updatedSeg: ClipSegment? = null
+        _editorState.update { state ->
+            val seg = state.segment ?: return@update state
+            val next = if (track == null) {
+                seg.copy(
+                    selectedMusicTrackId = null,
+                    selectedMusicTitle = null,
+                    selectedMusicUrl = null
+                )
+            } else {
+                seg.copy(
+                    selectedMusicTrackId = track.id,
+                    selectedMusicTitle = track.title,
+                    selectedMusicUrl = track.audioUrl,
+                    audioMoodLabel = track.mood.label,
+                    audioBpm = track.bpm
+                )
+            }
+            updatedSeg = next
+            state.copy(segment = next)
+        }
+        updatedSeg?.let { seg ->
+            viewModelScope.launch { projectRepository.updateSegment(seg) }
+        }
+        _statusBannerMessage.value = if (track != null) {
+            "Musik latar \"${track.title}\" dipasang."
+        } else {
+            "Musik latar dinonaktifkan."
+        }
+    }
+
+    fun selectCustomMusicUrlForEditor(rawUrl: String) {
+        val customTrack = RoyaltyFreeMusicCatalog.buildCustomUrlTrack(rawUrl)
+        if (customTrack == null) {
+            _statusBannerMessage.value = "Masukkan URL file audio yang valid (.mp3 / .m4a / .wav)."
+            return
+        }
+        _editorState.update { state ->
+            val filtered = state.recommendedTracks.filterNot { it.audioUrl == customTrack.audioUrl }
+            state.copy(recommendedTracks = listOf(customTrack) + filtered)
+        }
+        selectMusicTrackForEditor(customTrack)
+    }
+
+    fun toggleMusicPreview(track: MusicTrackRecommendation) {
+        val currentPreviewId = _editorState.value.previewingTrackId
+        if (currentPreviewId == track.id) {
+            stopMusicPreview()
+            return
+        }
+        viewModelScope.launch {
+            val minDur = _editorState.value.segment?.durationMs?.coerceAtLeast(10_000L) ?: 15_000L
+            val uri = RoyaltyFreeMusicCatalog.resolvePlayableAudioUri(
+                context = getApplication(),
+                audioUrl = track.audioUrl,
+                trackId = track.id,
+                minDurationMs = minDur
+            )
+            if (uri != null) {
+                _editorState.update {
+                    it.copy(previewingTrackId = track.id, previewTrackUri = uri)
+                }
+            } else {
+                _statusBannerMessage.value = "Gagal memutar pratinjau audio."
+            }
+        }
+    }
+
+    fun stopMusicPreview() {
+        _editorState.update {
+            it.copy(previewingTrackId = null, previewTrackUri = null)
+        }
+    }
+
+    fun toggleAutoMusicOnExportSettings(enable: Boolean) {
+        val seg = _editorState.value.segment ?: return
+        if (!enable) {
+            selectMusicTrackForEditor(null)
+            return
+        }
+        if (!seg.selectedMusicUrl.isNullOrBlank()) return
+        val mood = when (seg.tone) {
+            CaptionTone.ENERGETIC -> MusicMood.UPBEAT
+            CaptionTone.PROFESSIONAL -> MusicMood.CORPORATE
+            CaptionTone.EDUCATIONAL -> MusicMood.LOFI_CHILL
+            CaptionTone.HUMOROUS -> MusicMood.UPBEAT
+        }
+        val bestTrack = RoyaltyFreeMusicCatalog.rankForMoodAndBpm(mood, 112).firstOrNull()
+        if (bestTrack != null) {
+            selectMusicTrackForEditor(bestTrack)
+        }
+    }
+
+    fun analyzeAudioAndRecommendMusicForActiveSegment() {
+        val current = _editorState.value
+        val seg = current.segment ?: return
+        val proj = current.project ?: return
+        if (current.isAnalyzingAudio) return
+
+        viewModelScope.launch {
+            _editorState.update { it.copy(isAnalyzingAudio = true, errorMessage = null) }
+            try {
+                val summary = AudioMoodAnalyzer.analyzeClipAudio(
+                    context = getApplication(),
+                    sourceUri = if (proj.hasPlayableStream) Uri.parse(proj.sourceUri) else null,
+                    startMs = seg.startMs,
+                    endMs = seg.endMs,
+                    tone = seg.tone,
+                    targetPlatform = proj.targetPlatform,
+                    focusTopic = proj.focusTopic
+                )
+                val result = aiRepository.recommendMusicForClip(
+                    audioAnalysis = summary,
+                    clipTitle = seg.title,
+                    focusTopic = proj.focusTopic
+                )
+                val topTrack = result.recommendedTracks.firstOrNull()
+                var updatedSegment: ClipSegment? = null
+                _editorState.update { state ->
+                    val latest = state.segment ?: return@update state
+                    val nextSeg = if (latest.selectedMusicUrl.isNullOrBlank() && topTrack != null) {
+                        latest.copy(
+                            selectedMusicTrackId = topTrack.id,
+                            selectedMusicTitle = topTrack.title,
+                            selectedMusicUrl = topTrack.audioUrl,
+                            audioMoodLabel = result.audioAnalysis.detectedMood.label,
+                            audioBpm = result.audioAnalysis.estimatedBpm
+                        )
+                    } else {
+                        latest.copy(
+                            audioMoodLabel = result.audioAnalysis.detectedMood.label,
+                            audioBpm = result.audioAnalysis.estimatedBpm
+                        )
+                    }
+                    updatedSegment = nextSeg
+                    state.copy(
+                        isAnalyzingAudio = false,
+                        audioAnalysis = result.audioAnalysis,
+                        recommendedTracks = result.recommendedTracks,
+                        segment = nextSeg
+                    )
+                }
+                updatedSegment?.let { projectRepository.updateSegment(it) }
+                _statusBannerMessage.value = "[Sampel AI] Mood ${result.audioAnalysis.detectedMood.label} terdeteksi • ${result.recommendedTracks.size} musik direkomendasikan."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Audio analysis failed", e)
+                _editorState.update {
+                    it.copy(
+                        isAnalyzingAudio = false,
+                        errorMessage = e.localizedMessage ?: "Gagal menganalisis audio klip."
+                    )
+                }
+            }
+        }
+    }
+
+    fun generateVisualHookForActiveSegment() {
+        val current = _editorState.value
+        val seg = current.segment ?: return
+        val proj = current.project ?: return
+        if (current.isGeneratingHook) return
+
+        viewModelScope.launch {
+            _editorState.update { it.copy(isGeneratingHook = true, errorMessage = null) }
+            try {
+                val introEnd = minOf(seg.endMs, seg.startMs + seg.hookDurationMs.coerceAtLeast(3_000L))
+                val introFrames = if (proj.hasPlayableStream) {
+                    runCatching {
+                        mediaProcessor.extractClipWindowFrames(
+                            uri = Uri.parse(proj.sourceUri),
+                            startMs = seg.startMs,
+                            endMs = introEnd,
+                            count = 3
+                        )
+                    }.getOrDefault(emptyList())
+                } else {
+                    emptyList()
+                }
+
+                val result = aiRepository.generateFirst3SecVisualHook(
+                    clipTitle = seg.title,
+                    focusTopic = proj.focusTopic,
+                    tone = seg.tone,
+                    aspectRatio = seg.aspectRatio,
+                    introFrames = introFrames
+                )
+
+                var updatedSegment: ClipSegment? = null
+                _editorState.update { state ->
+                    val latest = state.segment ?: return@update state
+                    val nextSeg = latest.copy(
+                        hookLine = result.hookLine,
+                        showIntroHook = true,
+                        hookOverlayStyle = result.recommendedStyle
+                    )
+                    updatedSegment = nextSeg
+                    state.copy(
+                        isGeneratingHook = false,
+                        hookRationale = result.rationale,
+                        segment = nextSeg
+                    )
+                }
+                updatedSegment?.let { projectRepository.updateSegment(it) }
+                _statusBannerMessage.value = "[Sampel AI] Visual hook 3 detik pertama dibuat (${result.recommendedStyle.label})."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to generate visual hook", e)
+                _editorState.update {
+                    it.copy(
+                        isGeneratingHook = false,
+                        errorMessage = e.localizedMessage ?: "Gagal membuat hook 3 detik."
+                    )
+                }
+            }
         }
     }
 

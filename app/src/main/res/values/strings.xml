@@ -167,4 +167,30 @@
     <string name="batch_queue_empty_subtitle">Pilih beberapa video dari galeri HP atau masukkan beberapa tautan sosial media untuk diproses berurutan secara otomatis.</string>
     <string name="batch_queue_view_clips">Lihat Klip</string>
     <string name="batch_queue_retry">Coba Lagi</string>
+
+    <!-- Tambah URL -->
+    <string name="home_add_url_cta">+ Tambah URL</string>
+    <string name="home_quick_url_title">Tambah URL Video Langsung</string>
+    <string name="home_quick_url_hint">Tempel URL YouTube, TikTok, IG, atau link .mp4/.m3u8</string>
+    <string name="home_quick_url_add_batch">Ke Antrean</string>
+    <string name="home_quick_url_load_now">Muat URL</string>
+
+    <!-- AI Audio Analysis & Royalty-Free Music -->
+    <string name="editor_tool_music">Musik AI</string>
+    <string name="editor_music_section_title">Analisis Audio &amp; Musik Latar AI</string>
+    <string name="editor_analyze_audio_music_cta">Analisis Audio &amp; Rekomendasi Musik (AI)</string>
+    <string name="editor_analyzing_audio_music">Menganalisis tempo, mood &amp; energi audio…</string>
+    <string name="editor_music_volume_label">Volume Musik Latar</string>
+    <string name="editor_music_none">Tanpa Musik Latar</string>
+    <string name="editor_music_custom_url_label">Tambah URL Musik (.mp3 / .m4a / .wav)</string>
+    <string name="editor_music_custom_url_cta">+ Tambah URL Audio</string>
+    <string name="export_settings_music_toggle">Tambah Musik Latar Bebas Royalti</string>
+
+    <!-- 3-Second Visual Hook Overlay -->
+    <string name="editor_hook_3s_section_title">Visual Hook Intro (3 Detik Pertama)</string>
+    <string name="editor_hook_3s_toggle">Tampilkan Hook Visual 3 Detik Pertama</string>
+    <string name="editor_hook_3s_generate_cta">Buat Visual Hook 3 Detik Otomatis (AI)</string>
+    <string name="editor_hook_3s_generating">Menganalisis frame pembuka 3 detik…</string>
+    <string name="editor_hook_3s_duration_label">Durasi Tampil Hook</string>
+    <string name="editor_hook_3s_style_label">Gaya Tampilan Overlay Hook</string>
 </resources>

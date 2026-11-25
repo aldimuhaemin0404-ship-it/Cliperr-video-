@@ -3,11 +3,17 @@ package com.example.data.ai
 import android.graphics.Bitmap
 import com.example.domain.model.AiAnalysisResult
 import com.example.domain.model.AiCaptionVariation
+import com.example.domain.model.AiMusicRecommendationResult
 import com.example.domain.model.AiSubtitleResult
+import com.example.domain.model.AiVisualHookResult
+import com.example.domain.model.AspectRatioPreset
+import com.example.domain.model.AudioAnalysisSummary
 import com.example.domain.model.CaptionTone
 import com.example.domain.model.ClipSegment
+import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.SubtitleCue
 import com.example.domain.model.TargetPlatform
+import com.example.media.RoyaltyFreeMusicCatalog
 import kotlinx.coroutines.delay
 import kotlin.math.max
 import kotlin.math.min
@@ -39,6 +45,20 @@ interface AiClipperRepository {
         tone: CaptionTone,
         clipFrames: List<Bitmap>
     ): AiSubtitleResult
+
+    suspend fun recommendMusicForClip(
+        audioAnalysis: AudioAnalysisSummary,
+        clipTitle: String,
+        focusTopic: String
+    ): AiMusicRecommendationResult
+
+    suspend fun generateFirst3SecVisualHook(
+        clipTitle: String,
+        focusTopic: String,
+        tone: CaptionTone,
+        aspectRatio: AspectRatioPreset,
+        introFrames: List<Bitmap>
+    ): AiVisualHookResult
 }
 
 /**
@@ -245,6 +265,104 @@ class PlaceholderAiClipperRepository : AiClipperRepository {
             cues = cues,
             summaryCaption = "[Sampel AI] ${cues.size} baris subtitle otomatis siap tampil."
         )
+    }
+
+    override suspend fun recommendMusicForClip(
+        audioAnalysis: AudioAnalysisSummary,
+        clipTitle: String,
+        focusTopic: String
+    ): AiMusicRecommendationResult {
+        delay(550L)
+        val topicHint = focusTopic.trim().ifEmpty {
+            clipTitle.removePrefix("[Sampel AI]").trim().ifEmpty { "klip ini" }
+        }
+        val ranked = RoyaltyFreeMusicCatalog.rankForMoodAndBpm(
+            mood = audioAnalysis.detectedMood,
+            targetBpm = audioAnalysis.estimatedBpm
+        ).mapIndexed { idx, track ->
+            val aiNote = if (idx == 0) {
+                "[Sampel AI] Pilihan utama: tempo ${track.bpm} BPM selaras dengan ritme \"$topicHint\"."
+            } else {
+                "[Sampel AI] ${track.rationale}."
+            }
+            track.copy(rationale = aiNote)
+        }
+
+        val enrichedAnalysis = audioAnalysis.copy(
+            analysisSummary = "[Sampel AI] ${audioAnalysis.analysisSummary} • Mood ${audioAnalysis.detectedMood.label}"
+        )
+
+        return AiMusicRecommendationResult(
+            isPlaceholderMode = true,
+            audioAnalysis = enrichedAnalysis,
+            recommendedTracks = ranked
+        )
+    }
+
+    override suspend fun generateFirst3SecVisualHook(
+        clipTitle: String,
+        focusTopic: String,
+        tone: CaptionTone,
+        aspectRatio: AspectRatioPreset,
+        introFrames: List<Bitmap>
+    ): AiVisualHookResult {
+        delay(500L)
+        val cleanTopic = focusTopic.trim().ifEmpty {
+            clipTitle.removePrefix("[Sampel AI]").trim().ifEmpty { "momen ini" }
+        }
+        val avgLuma = computeAverageLuminance(introFrames)
+        val recommendedStyle = when {
+            avgLuma >= 145 -> HookOverlayStyle.CYBER_BANNER
+            tone == CaptionTone.ENERGETIC || tone == CaptionTone.HUMOROUS -> HookOverlayStyle.NEON_BADGE
+            else -> HookOverlayStyle.MINIMAL_BOLD
+        }
+
+        val hookText = when (tone) {
+            CaptionTone.ENERGETIC -> "[Sampel AI] TUNGGU! Lihat $cleanTopic dalam 3 detik ini 🔥"
+            CaptionTone.PROFESSIONAL -> "[Sampel AI] Poin Penting: $cleanTopic (${aspectRatio.label})"
+            CaptionTone.HUMOROUS -> "[Sampel AI] 3 Detik Pertama Langsung Relate: $cleanTopic!"
+            CaptionTone.EDUCATIONAL -> "[Sampel AI] Wajib Tahu Soal $cleanTopic 💡"
+        }
+
+        val frameDesc = if (introFrames.isNotEmpty()) {
+            "${introFrames.size} frame awal dianalisis (luminansi $avgLuma/255)"
+        } else {
+            "komposisi visual ${aspectRatio.label}"
+        }
+
+        return AiVisualHookResult(
+            isPlaceholderMode = true,
+            hookLine = hookText,
+            recommendedStyle = recommendedStyle,
+            rationale = "[Sampel AI] Overlay hook 3 detik pertama dioptimalkan dari $frameDesc dengan gaya ${recommendedStyle.label}."
+        )
+    }
+
+    private fun computeAverageLuminance(frames: List<Bitmap>): Int {
+        if (frames.isEmpty()) return 110
+        var total = 0L
+        var count = 0
+        frames.forEach { bmp ->
+            val w = bmp.width.coerceAtLeast(1)
+            val h = bmp.height.coerceAtLeast(1)
+            val stepX = max(1, w / 8)
+            val stepY = max(1, h / 8)
+            var y = 0
+            while (y < h) {
+                var x = 0
+                while (x < w) {
+                    val px = bmp.getPixel(x, y)
+                    val r = (px shr 16) and 0xFF
+                    val g = (px shr 8) and 0xFF
+                    val b = px and 0xFF
+                    total += (299 * r + 587 * g + 114 * b) / 1000
+                    count++
+                    x += stepX
+                }
+                y += stepY
+            }
+        }
+        return if (count > 0) (total / count).toInt().coerceIn(0, 255) else 110
     }
 
     private fun buildProportionalWindows(

@@ -40,6 +40,44 @@ enum class VideoFilterPreset(val label: String) {
     COOL("Cool")
 }
 
+enum class HookOverlayStyle(val label: String) {
+    NEON_BADGE("Neon Badge"),
+    CYBER_BANNER("Cyber Banner"),
+    MINIMAL_BOLD("Minimal Bold")
+}
+
+enum class MusicMood(val label: String) {
+    UPBEAT("Upbeat / Enerjik"),
+    CORPORATE("Fokus / Profesional"),
+    LOFI_CHILL("Chill / Santai"),
+    DRAMATIC("Epik / Klimaks")
+}
+
+data class AudioAnalysisSummary(
+    val detectedMood: MusicMood,
+    val estimatedBpm: Int,
+    val energyPercent: Int,
+    val paceLabel: String,
+    val sampleRateHz: Int? = null,
+    val channelCount: Int? = null,
+    val hasOriginalAudio: Boolean = true,
+    val analysisSummary: String
+)
+
+data class MusicTrackRecommendation(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val mood: MusicMood,
+    val bpm: Int,
+    val durationSec: Int,
+    val licenseLabel: String,
+    val audioUrl: String,
+    val isCustomUrl: Boolean = false,
+    val matchScore: Int = 95,
+    val rationale: String = ""
+)
+
 enum class ExportQuality(
     val label: String,
     val shortSidePx: Int
@@ -146,7 +184,16 @@ data class ClipSegment(
     val videoFilter: VideoFilterPreset = VideoFilterPreset.NONE,
     val brightness: Float = 0f,
     val showSubtitles: Boolean = true,
+    val showIntroHook: Boolean = true,
+    val hookDurationMs: Long = 3_000L,
+    val hookOverlayStyle: HookOverlayStyle = HookOverlayStyle.NEON_BADGE,
     val includeAudio: Boolean = true,
+    val selectedMusicTrackId: String? = null,
+    val selectedMusicTitle: String? = null,
+    val selectedMusicUrl: String? = null,
+    val musicVolume: Float = 0.35f,
+    val audioMoodLabel: String? = null,
+    val audioBpm: Int? = null,
     val exportQuality: ExportQuality = ExportQuality.HD_1080P,
     val isFavorite: Boolean = false,
     val subtitleCues: List<SubtitleCue> = emptyList(),
@@ -185,6 +232,19 @@ data class AiSubtitleResult(
     val isPlaceholderMode: Boolean,
     val cues: List<SubtitleCue>,
     val summaryCaption: String
+)
+
+data class AiMusicRecommendationResult(
+    val isPlaceholderMode: Boolean,
+    val audioAnalysis: AudioAnalysisSummary,
+    val recommendedTracks: List<MusicTrackRecommendation>
+)
+
+data class AiVisualHookResult(
+    val isPlaceholderMode: Boolean,
+    val hookLine: String,
+    val recommendedStyle: HookOverlayStyle,
+    val rationale: String
 )
 
 sealed interface ExportProgressState {

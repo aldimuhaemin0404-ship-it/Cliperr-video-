@@ -28,13 +28,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Title
@@ -53,6 +58,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -60,10 +66,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,6 +91,8 @@ import com.example.domain.model.AspectRatioPreset
 import com.example.domain.model.CaptionTone
 import com.example.domain.model.ClipSegment
 import com.example.domain.model.ExportProgressState
+import com.example.domain.model.HookOverlayStyle
+import com.example.domain.model.MusicTrackRecommendation
 import com.example.domain.model.VideoFilterPreset
 import com.example.ui.components.AiDemoNoticeBanner
 import com.example.ui.components.ExportProgressBanner
@@ -101,8 +115,8 @@ import com.example.ui.theme.NeonPurple
 
 private enum class EditorTool(val label: String) {
     TRIM("Potong"),
-    AUDIO("Audio"),
-    HOOK("Hook"),
+    AUDIO("Musik AI"),
+    HOOK("Hook 3s"),
     SUBTITLE("Subtitle"),
     RATIO("Rasio"),
     FILTER("Filter"),
@@ -123,6 +137,16 @@ fun ClipEditorScreen(
     onResetFilters: () -> Unit,
     onToggleSubtitles: (Boolean) -> Unit,
     onToggleIncludeAudio: (Boolean) -> Unit,
+    onToggleIntroHook: (Boolean) -> Unit,
+    onUpdateHookDuration: (Long) -> Unit,
+    onUpdateHookStyle: (HookOverlayStyle) -> Unit,
+    onGenerateVisualHook: () -> Unit,
+    onAnalyzeAudioMusic: () -> Unit,
+    onSelectMusicTrack: (MusicTrackRecommendation?) -> Unit,
+    onSelectCustomMusicUrl: (String) -> Unit,
+    onToggleMusicPreview: (MusicTrackRecommendation) -> Unit,
+    onStopMusicPreview: () -> Unit,
+    onUpdateMusicVolume: (Float) -> Unit,
     onUpdateHook: (String) -> Unit,
     onUpdateCaption: (String) -> Unit,
     onRegenerateCaption: (CaptionTone) -> Unit,
@@ -136,9 +160,38 @@ fun ClipEditorScreen(
     onOpenExports: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BackHandler(onBack = onBack)
+    BackHandler {
+        onStopMusicPreview()
+        onBack()
+    }
 
     var activeTool by remember { mutableStateOf(EditorTool.TRIM) }
+
+    val context = LocalContext.current
+    val previewAudioPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE
+        }
+    }
+
+    LaunchedEffect(editorState.previewTrackUri) {
+        val uri = editorState.previewTrackUri
+        if (uri != null) {
+            previewAudioPlayer.setMediaItem(MediaItem.fromUri(uri))
+            previewAudioPlayer.prepare()
+            previewAudioPlayer.playWhenReady = true
+        } else {
+            previewAudioPlayer.stop()
+            previewAudioPlayer.clearMediaItems()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            onStopMusicPreview()
+            previewAudioPlayer.release()
+        }
+    }
 
     val project = editorState.project
     val segment = editorState.segment
@@ -244,7 +297,11 @@ fun ClipEditorScreen(
                                 brightness = segment.brightness,
                                 overlayHook = segment.hookLine,
                                 subtitleCues = segment.subtitleCues,
-                                showCaptionOverlay = segment.showSubtitles
+                                showCaptionOverlay = segment.showSubtitles,
+                                showIntroHook = segment.showIntroHook,
+                                hookDurationMs = segment.hookDurationMs,
+                                hookOverlayStyle = segment.hookOverlayStyle,
+                                selectedMusicTitle = segment.selectedMusicTitle
                             )
                         } else {
                             SocialLinkPreviewCard(
@@ -299,7 +356,22 @@ fun ClipEditorScreen(
                             }
                         }
 
-                        EditorTool.AUDIO, EditorTool.RATIO -> {
+                        EditorTool.AUDIO -> {
+                            item {
+                                EditorAiMusicCard(
+                                    segment = segment,
+                                    editorState = editorState,
+                                    onAnalyzeAudioMusic = onAnalyzeAudioMusic,
+                                    onSelectMusicTrack = onSelectMusicTrack,
+                                    onSelectCustomMusicUrl = onSelectCustomMusicUrl,
+                                    onToggleMusicPreview = onToggleMusicPreview,
+                                    onUpdateMusicVolume = onUpdateMusicVolume,
+                                    onToggleIncludeAudio = onToggleIncludeAudio
+                                )
+                            }
+                        }
+
+                        EditorTool.RATIO -> {
                             item {
                                 EditorRatioAudioCard(
                                     segment = segment,
@@ -327,6 +399,10 @@ fun ClipEditorScreen(
                                 EditorHookSubtitleCard(
                                     segment = segment,
                                     editorState = editorState,
+                                    onToggleIntroHook = onToggleIntroHook,
+                                    onUpdateHookDuration = onUpdateHookDuration,
+                                    onUpdateHookStyle = onUpdateHookStyle,
+                                    onGenerateVisualHook = onGenerateVisualHook,
                                     onUpdateHook = onUpdateHook,
                                     onUpdateCaption = onUpdateCaption,
                                     onRegenerateCaption = onRegenerateCaption,
@@ -390,7 +466,7 @@ private fun EditorToolsGridCard(
 ) {
     val row1 = listOf(
         EditorTool.TRIM to Icons.Filled.ContentCut,
-        EditorTool.AUDIO to Icons.AutoMirrored.Filled.VolumeUp,
+        EditorTool.AUDIO to Icons.Filled.MusicNote,
         EditorTool.HOOK to Icons.Filled.Title,
         EditorTool.SUBTITLE to Icons.Filled.Subtitles
     )
@@ -675,9 +751,328 @@ private fun EditorRatioAudioCard(
 }
 
 @Composable
+private fun EditorAiMusicCard(
+    segment: ClipSegment,
+    editorState: EditorUiState,
+    onAnalyzeAudioMusic: () -> Unit,
+    onSelectMusicTrack: (MusicTrackRecommendation?) -> Unit,
+    onSelectCustomMusicUrl: (String) -> Unit,
+    onToggleMusicPreview: (MusicTrackRecommendation) -> Unit,
+    onUpdateMusicVolume: (Float) -> Unit,
+    onToggleIncludeAudio: (Boolean) -> Unit
+) {
+    var customAudioUrl by remember { mutableStateOf("") }
+
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+        border = BorderStroke(1.dp, CosmicOutline)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MusicNote,
+                        contentDescription = null,
+                        tint = FuturisticCyan
+                    )
+                    Text(
+                        text = stringResource(R.string.editor_music_section_title),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+                if (segment.selectedMusicUrl != null) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = FuturisticCyan.copy(alpha = 0.16f)
+                    ) {
+                        Text(
+                            text = "Aktif",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = FuturisticCyan,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            AiDemoNoticeBanner(compact = true)
+
+            Button(
+                onClick = onAnalyzeAudioMusic,
+                enabled = !editorState.isAnalyzingAudio,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = NeonPurple,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag("analyze_audio_music_button")
+            ) {
+                if (editorState.isAnalyzingAudio) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.editor_analyzing_audio_music))
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.GraphicEq,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.editor_analyze_audio_music_cta))
+                }
+            }
+
+            editorState.audioAnalysis?.let { analysis ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = CosmicSurfaceElevated,
+                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("audio_analysis_summary_card")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "${analysis.detectedMood.label} • ~${analysis.estimatedBpm} BPM • Energi ${analysis.energyPercent}%",
+                            style = MonoTimecodeStyle.copy(fontWeight = FontWeight.Bold),
+                            color = FuturisticCyan
+                        )
+                        Text(
+                            text = analysis.analysisSummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.editor_include_audio),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Switch(
+                    checked = segment.includeAudio,
+                    onCheckedChange = onToggleIncludeAudio,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = NeonPurple
+                    ),
+                    modifier = Modifier.testTag("music_panel_include_audio_switch")
+                )
+            }
+
+            if (segment.selectedMusicUrl != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = stringResource(R.string.editor_music_volume_label),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Text(
+                            text = "${(segment.musicVolume * 100).toInt()}%",
+                            style = MonoTimecodeStyle,
+                            color = FuturisticCyan
+                        )
+                    }
+                    Slider(
+                        value = segment.musicVolume,
+                        onValueChange = onUpdateMusicVolume,
+                        valueRange = 0.05f..1.0f,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("music_volume_slider")
+                    )
+                }
+            }
+
+            OutlinedButton(
+                onClick = { onSelectMusicTrack(null) },
+                border = BorderStroke(
+                    1.dp,
+                    if (segment.selectedMusicUrl == null) FuturisticCyan else CosmicOutline
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag("select_no_music_button")
+            ) {
+                Text(
+                    text = stringResource(R.string.editor_music_none),
+                    color = if (segment.selectedMusicUrl == null) FuturisticCyan else Color.White
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                editorState.recommendedTracks.forEach { track ->
+                    val isSelected = segment.selectedMusicTrackId == track.id || segment.selectedMusicUrl == track.audioUrl
+                    val isPreviewing = editorState.previewingTrackId == track.id
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isSelected) NeonPurple.copy(alpha = 0.22f) else CosmicSurfaceElevated,
+                        border = BorderStroke(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected) FuturisticCyan else CosmicOutline
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onSelectMusicTrack(track) }
+                            .testTag("music_track_item_${track.id}")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            IconButton(
+                                onClick = { onToggleMusicPreview(track) },
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("music_preview_button_${track.id}")
+                            ) {
+                                Icon(
+                                    imageVector = if (isPreviewing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = if (isPreviewing) "Hentikan pratinjau" else "Putar pratinjau",
+                                    tint = FuturisticCyan
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = track.title,
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = FuturisticCyan.copy(alpha = 0.16f)
+                                    ) {
+                                        Text(
+                                            text = "${track.matchScore}%",
+                                            style = MonoTimecodeStyle,
+                                            color = FuturisticCyan,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "${track.mood.label} • ${track.bpm} BPM • ${track.licenseLabel}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (track.rationale.isNotBlank()) {
+                                    Text(
+                                        text = track.rationale,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = FuturisticCyan.copy(alpha = 0.9f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = "Terpilih",
+                                    tint = FuturisticCyan
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Custom Audio URL ("Tambah URL Musik")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = customAudioUrl,
+                    onValueChange = { customAudioUrl = it },
+                    label = { Text(stringResource(R.string.editor_music_custom_url_label)) },
+                    placeholder = { Text("https://example.com/audio.mp3") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("custom_music_url_input")
+                )
+                OutlinedButton(
+                    onClick = {
+                        onSelectCustomMusicUrl(customAudioUrl)
+                        customAudioUrl = ""
+                    },
+                    enabled = customAudioUrl.isNotBlank(),
+                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.65f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .minimumInteractiveComponentSize()
+                        .testTag("add_custom_music_url_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AddLink,
+                        contentDescription = null,
+                        tint = FuturisticCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.editor_music_custom_url_cta))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun EditorHookSubtitleCard(
     segment: ClipSegment,
     editorState: EditorUiState,
+    onToggleIntroHook: (Boolean) -> Unit,
+    onUpdateHookDuration: (Long) -> Unit,
+    onUpdateHookStyle: (HookOverlayStyle) -> Unit,
+    onGenerateVisualHook: () -> Unit,
     onUpdateHook: (String) -> Unit,
     onUpdateCaption: (String) -> Unit,
     onRegenerateCaption: (CaptionTone) -> Unit,
@@ -694,11 +1089,129 @@ private fun EditorHookSubtitleCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = stringResource(R.string.editor_hook_caption_section),
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                text = stringResource(R.string.editor_hook_3s_section_title),
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = FuturisticCyan
             )
 
             AiDemoNoticeBanner(compact = true)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.editor_hook_3s_toggle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = segment.showIntroHook,
+                    onCheckedChange = onToggleIntroHook,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = NeonPurple
+                    ),
+                    modifier = Modifier.testTag("toggle_intro_hook_switch")
+                )
+            }
+
+            Button(
+                onClick = onGenerateVisualHook,
+                enabled = !editorState.isGeneratingHook,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = NeonPurple,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag("generate_visual_hook_button")
+            ) {
+                if (editorState.isGeneratingHook) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(R.string.editor_hook_3s_generating))
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(R.string.editor_hook_3s_generate_cta))
+                }
+            }
+
+            editorState.hookRationale?.let { rationale ->
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = CosmicSurfaceElevated,
+                    border = BorderStroke(1.dp, NeonPurple.copy(alpha = 0.5f))
+                ) {
+                    Text(
+                        text = rationale,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FuturisticCyan,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = stringResource(R.string.editor_hook_3s_duration_label),
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(2_000L to "2 Detik", 3_000L to "3 Detik (Standar)", 4_000L to "4 Detik").forEach { (durMs, label) ->
+                        FilterChip(
+                            selected = segment.hookDurationMs == durMs,
+                            onClick = { onUpdateHookDuration(durMs) },
+                            label = { Text(label) },
+                            modifier = Modifier.minimumInteractiveComponentSize()
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = stringResource(R.string.editor_hook_3s_style_label),
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HookOverlayStyle.entries.forEach { style ->
+                        FilterChip(
+                            selected = segment.hookOverlayStyle == style,
+                            onClick = { onUpdateHookStyle(style) },
+                            label = { Text(style.label) },
+                            modifier = Modifier.minimumInteractiveComponentSize()
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.editor_hook_caption_section),
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+            )
 
             Row(
                 modifier = Modifier

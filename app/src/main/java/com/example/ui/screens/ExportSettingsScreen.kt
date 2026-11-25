@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CropPortrait
 import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Subtitles
@@ -81,6 +82,7 @@ fun ExportSettingsScreen(
     onSelectQuality: (ExportQuality) -> Unit,
     onToggleSubtitles: (Boolean) -> Unit,
     onToggleIncludeAudio: (Boolean) -> Unit,
+    onToggleMusic: (Boolean) -> Unit,
     onToggleAutoOpenShareSheet: (Boolean) -> Unit,
     onStartExport: (ClipSegment, String) -> Unit,
     onCancelExport: () -> Unit,
@@ -238,6 +240,18 @@ fun ExportSettingsScreen(
                                 checked = segment.includeAudio,
                                 onCheckedChange = onToggleIncludeAudio,
                                 testTag = "export_audio_switch"
+                            )
+                            val musicLabel = if (!segment.selectedMusicTitle.isNullOrBlank()) {
+                                "Musik: ${segment.selectedMusicTitle}"
+                            } else {
+                                stringResource(R.string.export_settings_music_toggle)
+                            }
+                            ExportSettingToggleRow(
+                                icon = Icons.Filled.MusicNote,
+                                title = musicLabel,
+                                checked = !segment.selectedMusicUrl.isNullOrBlank(),
+                                onCheckedChange = onToggleMusic,
+                                testTag = "export_music_switch"
                             )
                             ExportSettingToggleRow(
                                 icon = Icons.Filled.Share,
