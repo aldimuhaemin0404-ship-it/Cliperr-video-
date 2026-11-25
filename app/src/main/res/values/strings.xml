@@ -1,0 +1,170 @@
+<resources>
+    <string name="app_name">Aldi AI Clipper</string>
+
+    <!-- Navigation -->
+    <string name="nav_studio">Beranda</string>
+    <string name="nav_explore">Eksplorasi</string>
+    <string name="nav_clips">Favorit</string>
+    <string name="nav_exports">Ekspor</string>
+
+    <!-- Splash Screen -->
+    <string name="splash_brand_prefix">Aldi</string>
+    <string name="splash_brand_accent">AI Clipper</string>
+    <string name="splash_tagline">Cari • Potong • Edit • Share</string>
+    <string name="splash_subtitle">Ubah video panjang jadi klip pendek terbaik dengan AI!</string>
+    <string name="splash_loading">Memuat aplikasi…</string>
+
+    <!-- AI Notice -->
+    <string name="ai_demo_notice_title">Mode Sampel AI Aktif</string>
+    <string name="ai_demo_notice_body">Hasil analisis klip dan caption saat ini menggunakan data sampel lokal. Fitur AI Gemini langsung memerlukan Firebase AI Logic.</string>
+
+    <!-- Home / Studio Screen -->
+    <string name="studio_hero_badge">ALDI AI STUDIO</string>
+    <string name="studio_hero_title">Temukan Momen Terbaik dengan AI!</string>
+    <string name="studio_hero_subtitle">Impor video dari galeri atau tempel link YouTube, TikTok, dan Instagram untuk membuat klip pendek siap viral.</string>
+    <string name="home_pick_source_title">Pilih Sumber Video:</string>
+    <string name="home_source_gallery">Galeri HP</string>
+    <string name="home_source_youtube">YouTube Link</string>
+    <string name="home_source_tiktok">TikTok Link</string>
+    <string name="home_source_instagram">Instagram Link</string>
+    <string name="home_popular_today">Video Populer Hari Ini</string>
+    <string name="home_see_all">Lihat Semua</string>
+
+    <string name="studio_pick_video">Pilih Video dari Galeri</string>
+    <string name="studio_change_video">Ganti Video</string>
+    <string name="studio_source_gallery">Dari Galeri</string>
+    <string name="studio_source_link">Link Sosmed</string>
+    <string name="studio_link_card_title">Impor dari Link Sosial Media</string>
+    <string name="studio_link_card_subtitle">Mendukung YouTube, TikTok, Instagram, Facebook, X, Threads, Vimeo, dan URL video langsung (.mp4 / .m3u8). Anda juga bisa langsung Bagikan link ke Aldi AI Clipper.</string>
+    <string name="studio_link_input_label">Tempel link video YouTube, TikTok, IG, X, atau URL</string>
+    <string name="studio_link_input_hint">https://youtu.be/... atau https://vt.tiktok.com/...</string>
+    <string name="studio_link_paste">Tempel</string>
+    <string name="studio_link_fetch_button">Ambil Info &amp; Video Link</string>
+    <string name="studio_link_fetching">Memeriksa tautan &amp; metadata video…</string>
+    <string name="studio_link_attach_local">Tautkan File Video Lokal (Untuk Render MP4)</string>
+    <string name="studio_range_title">Rentang Waktu Klip</string>
+    <string name="studio_range_start_label">Mulai</string>
+    <string name="studio_range_end_label">Akhir</string>
+    <string name="studio_range_set_playhead">Dari Posisi</string>
+    <string name="studio_range_preview_clip">Putar Klip</string>
+    <string name="studio_range_export_now">Potong &amp; Ekspor MP4</string>
+    <string name="studio_suggest_timestamps">Sarankan Timestamp Klip (AI)</string>
+    <string name="studio_suggesting_timestamps">Menganalisis frame &amp; metadata…</string>
+    <string name="studio_suggested_ranges_title">Rekomendasi Rentang Waktu [Sampel AI]</string>
+    <string name="studio_target_platform">Target Platform &amp; Rasio</string>
+    <string name="studio_focus_topic_label">Fokus Topik / Kata Kunci (Opsional)</string>
+    <string name="studio_focus_topic_hint">Contoh: kutipan motivasi, momen lucu, tips utama</string>
+    <string name="studio_analyze_button">Analisis &amp; Buat Klip AI</string>
+    <string name="studio_analyzing_progress">Memindai frame &amp; menyusun klip…</string>
+    <string name="studio_recent_projects">Proyek Terbaru</string>
+    <string name="studio_no_projects">Belum ada proyek. Pilih video untuk mulai memotong klip.</string>
+
+    <!-- Popular Video Search Screen -->
+    <string name="explore_title">Cari Video Populer</string>
+    <string name="explore_search_hint">Cari konten viral atau tempel link…</string>
+    <string name="explore_import_url_button">Impor URL Ini</string>
+    <string name="explore_ai_pick_banner">Video Viral Pilihan AI</string>
+
+    <!-- AI Analysis Progress Screen -->
+    <string name="analysis_title">Analisis AI</string>
+    <string name="analysis_subtitle_primary">Menganalisis video…</string>
+    <string name="analysis_subtitle_secondary">Mencari momen terbaik</string>
+    <string name="analysis_step_1">Deteksi adegan menarik</string>
+    <string name="analysis_step_2">Analisis popularitas</string>
+    <string name="analysis_step_3">Membuat klip terbaik</string>
+    <string name="analysis_step_4">Menyiapkan hasil…</string>
+    <string name="analysis_eta">Estimasi waktu: ± 5 detik</string>
+
+    <!-- Projects / Best Clips Screen -->
+    <string name="clips_screen_title">Hasil Klip Terbaik</string>
+    <string name="clips_found_banner_title">Ditemukan 5 Klip Terbaik!</string>
+    <string name="clips_found_banner_subtitle">Pilih dan edit sesuai kebutuhan</string>
+    <string name="clips_filter_all">Semua</string>
+    <string name="clips_filter_favorites">Favorit</string>
+    <string name="clips_edit_all">Edit Semua</string>
+    <string name="clips_save_favorite">Simpan Favorit</string>
+    <string name="clips_empty_title">Belum Ada Klip AI</string>
+    <string name="clips_empty_subtitle">Pilih atau unggah video di Beranda untuk mendeteksi 5 momen terbaik, skor viral, dan caption otomatis.</string>
+    <string name="clips_go_to_studio">Buka Beranda</string>
+    <string name="clips_edit_preview">Edit &amp; Preview</string>
+    <string name="clips_export_mp4">Ekspor MP4</string>
+    <string name="clips_viral_score_label">Skor Viral</string>
+
+    <!-- Clip Editor Screen -->
+    <string name="editor_title">Editor Video</string>
+    <string name="editor_back">Kembali</string>
+    <string name="editor_show_captions">Tampilkan Caption</string>
+    <string name="editor_include_audio">Sertakan Audio Video</string>
+    <string name="editor_aspect_ratio">Rasio Bingkai</string>
+    <string name="editor_trim_timeline">Potong Timeline</string>
+    <string name="editor_filters_section">Filter &amp; Pencahayaan Video</string>
+    <string name="editor_brightness_label">Kecerahan</string>
+    <string name="editor_filter_reset">Reset Filter</string>
+    <string name="editor_hook_caption_section">Hook &amp; Caption AI</string>
+    <string name="editor_hook_label">Judul Hook</string>
+    <string name="editor_caption_label">Caption &amp; Hashtag</string>
+    <string name="editor_regenerate_caption">Buat Ulang Caption</string>
+    <string name="editor_generate_subtitles">Buat Subtitle Otomatis (AI)</string>
+    <string name="editor_generating_subtitles">Menganalisis audio &amp; visual klip…</string>
+    <string name="editor_subtitles_list_title">Subtitle Tersinkronisasi [Sampel AI]</string>
+    <string name="editor_save_changes">Simpan Perubahan</string>
+    <string name="editor_save_video_cta">Simpan Video</string>
+    <string name="editor_export_clip">Render &amp; Ekspor MP4</string>
+    <string name="editor_cancel_export">Batalkan Render</string>
+
+    <!-- Export Settings HD Screen -->
+    <string name="export_settings_title">Pengaturan Ekspor</string>
+    <string name="export_settings_format">Format Video</string>
+    <string name="export_settings_quality">Kualitas</string>
+    <string name="export_settings_subtitle_toggle">Subtitle Otomatis (Bahasa Indonesia)</string>
+    <string name="export_settings_audio_toggle">Sertakan Audio Asli</string>
+    <string name="export_settings_start_cta">Ekspor Video</string>
+
+    <!-- Export Success & Share Screen -->
+    <string name="export_success_title">Berhasil!</string>
+    <string name="export_success_subtitle">Video berhasil disimpan ke galeri HP Anda</string>
+    <string name="export_success_share_social">Bagikan ke Media Sosial</string>
+    <string name="export_success_open_gallery">Buka di Galeri</string>
+    <string name="export_success_edit_again">Edit Lagi</string>
+    <string name="export_success_back_home">Kembali ke Beranda</string>
+
+    <!-- Exports Screen -->
+    <string name="exports_title">Galeri Ekspor MP4</string>
+    <string name="exports_empty_title">Belum Ada Klip Terekspor</string>
+    <string name="exports_empty_subtitle">Render klip dari Editor atau Pengaturan Ekspor HD untuk menyimpannya sebagai file MP4 ke galeri HP Anda.</string>
+    <string name="exports_play">Putar</string>
+    <string name="exports_save_gallery">Simpan Galeri</string>
+    <string name="exports_saved_in_gallery">Di Galeri</string>
+    <string name="exports_share">Bagikan</string>
+    <string name="exports_delete">Hapus</string>
+
+    <!-- Share Sheet Integration -->
+    <string name="export_settings_auto_share_toggle">Buka Share Sheet otomatis setelah ekspor</string>
+    <string name="share_sheet_title">Bagikan Klip ke Media Sosial</string>
+    <string name="share_sheet_include_caption">Sertakan Caption &amp; Hashtag</string>
+    <string name="share_sheet_caption_label">Caption &amp; Hashtag Siap Posting</string>
+    <string name="share_sheet_copy_caption">Salin Caption</string>
+    <string name="share_sheet_copied">Caption disalin ke clipboard</string>
+    <string name="share_sheet_platforms_title">Bagikan Langsung ke Platform Populer:</string>
+    <string name="share_sheet_system_button">Buka Share Sheet Android</string>
+    <string name="share_sheet_status_installed">Terpasang</string>
+    <string name="share_sheet_status_chooser">Via Sistem</string>
+    <string name="share_sheet_save_gallery_first">Simpan ke Galeri</string>
+
+    <!-- Batch Queue System -->
+    <string name="batch_queue_title">Antrean Proses Batch</string>
+    <string name="batch_queue_home_card_title">Upload &amp; Proses Banyak Video (Batch)</string>
+    <string name="batch_queue_home_card_subtitle">Pilih beberapa video sekaligus dan pantau progres analisis AI serta render MP4 tiap item.</string>
+    <string name="batch_queue_pick_multiple">Pilih Banyak Video</string>
+    <string name="batch_queue_add_links">Tambah Banyak Link</string>
+    <string name="batch_queue_links_hint">Tempel 1 link per baris (YouTube, TikTok, IG, atau URL .mp4)</string>
+    <string name="batch_queue_enqueue_links">Masukkan ke Antrean</string>
+    <string name="batch_queue_auto_export_toggle">Auto-ekspor klip terbaik (#1) ke MP4 &amp; Galeri</string>
+    <string name="batch_queue_start_all">Proses Semua Antrean</string>
+    <string name="batch_queue_stop_all">Hentikan Proses Batch</string>
+    <string name="batch_queue_clear_done">Bersihkan Selesai</string>
+    <string name="batch_queue_empty_title">Antrean Batch Masih Kosong</string>
+    <string name="batch_queue_empty_subtitle">Pilih beberapa video dari galeri HP atau masukkan beberapa tautan sosial media untuk diproses berurutan secara otomatis.</string>
+    <string name="batch_queue_view_clips">Lihat Klip</string>
+    <string name="batch_queue_retry">Coba Lagi</string>
+</resources>

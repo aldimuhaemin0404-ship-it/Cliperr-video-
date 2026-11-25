@@ -1,0 +1,6 @@
+{
+  "name": "Aldi AI Clipper",
+  "description": "Smart short-form video clipper powered by AI to detect viral highlights, craft hooks, generate captions, and trim vertical clips.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
