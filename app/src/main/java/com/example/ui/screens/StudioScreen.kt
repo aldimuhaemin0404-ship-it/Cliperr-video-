@@ -555,7 +555,7 @@ private fun StudioHeroCard(
 ) {
     Card(
         shape = RoundedCornerShape(22.dp),
-        border = BorderStroke(1.dp, NeonPurple.copy(alpha = 0.55f)),
+        border = BorderStroke(1.2.dp, BrandNeonGradient),
         colors = CardDefaults.cardColors(containerColor = CosmicSurface)
     ) {
         Box(
@@ -564,9 +564,9 @@ private fun StudioHeroCard(
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            Color(0xFF17103C),
-                            Color(0xFF0C1532),
-                            Color(0xFF1B0E3B)
+                            Color(0xFF1A1147),
+                            Color(0xFF0C1738),
+                            Color(0xFF1F0F42)
                         )
                     )
                 )
@@ -581,19 +581,36 @@ private fun StudioHeroCard(
                     modifier = Modifier
                         .weight(1f)
                         .padding(end = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = FuturisticCyan.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.55f))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = stringResource(R.string.studio_hero_badge),
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = FuturisticCyan,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = FuturisticCyan.copy(alpha = 0.16f),
+                            border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.6f))
+                        ) {
+                            Text(
+                                text = stringResource(R.string.studio_hero_badge),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = FuturisticCyan,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFF10B981).copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.55f))
+                        ) {
+                            Text(
+                                text = "ANTI-BUFF",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = Color(0xFF6EE7B7),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
                     }
 
                     Text(
@@ -609,6 +626,25 @@ private fun StudioHeroCard(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
+
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("9:16 • 4:5", "HD 1080p", "Auto Subtitle").forEach { cap ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.White.copy(alpha = 0.08f)
+                            ) {
+                                Text(
+                                    text = cap,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.88f),
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
 
                     Button(
                         onClick = onPickVideo,
@@ -1321,17 +1357,36 @@ private fun SelectedVideoWorkspaceCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = NeonPurple.copy(alpha = 0.22f),
-                    border = BorderStroke(1.dp, NeonPurple.copy(alpha = 0.6f))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = video.sourcePlatform?.displayName?.uppercase() ?: "SIAP",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    if (video.hasPlayableStream) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.55f))
+                        ) {
+                            Text(
+                                text = "HD LANCAR",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFF6EE7B7),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = NeonPurple.copy(alpha = 0.22f),
+                        border = BorderStroke(1.dp, NeonPurple.copy(alpha = 0.6f))
+                    ) {
+                        Text(
+                            text = video.sourcePlatform?.displayName?.uppercase() ?: "SIAP",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -1568,11 +1623,20 @@ private fun RecentProjectCard(
                     .background(NeonPurple.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = if (project.sourcePlatformName != null) Icons.Filled.Link else Icons.Filled.MovieCreation,
-                    contentDescription = null,
-                    tint = FuturisticCyan
-                )
+                if (!project.thumbnailUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = project.thumbnailUrl,
+                        contentDescription = project.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (project.sourcePlatformName != null) Icons.Filled.Link else Icons.Filled.MovieCreation,
+                        contentDescription = null,
+                        tint = FuturisticCyan
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(

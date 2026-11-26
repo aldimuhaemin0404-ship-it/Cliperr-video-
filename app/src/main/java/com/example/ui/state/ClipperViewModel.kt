@@ -39,6 +39,7 @@ import com.example.domain.model.VideoFilterPreset
 import com.example.domain.model.VideoMetadata
 import com.example.domain.model.VideoTransitionStyle
 import com.example.media.AudioMoodAnalyzer
+import com.example.media.MediaPlaybackCache
 import com.example.media.RoyaltyFreeMusicCatalog
 import com.example.media.SocialShareHelper
 import com.example.media.VideoMediaProcessor
@@ -46,6 +47,8 @@ import com.example.ui.components.ShareSheetUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -177,6 +180,8 @@ class ClipperViewModel(
     private var activeExportJob: Job? = null
     private var activeAnalysisJob: Job? = null
     private var activeBatchJob: Job? = null
+    private var studioThumbnailJob: Job? = null
+    private var editorThumbnailJob: Job? = null
     private var activeTransformer: Transformer? = null
     private var activeBatchTransformer: Transformer? = null
 
@@ -287,6 +292,8 @@ class ClipperViewModel(
         activeExportJob?.cancel()
         activeAnalysisJob?.cancel()
         activeBatchJob?.cancel()
+        studioThumbnailJob?.cancel()
+        editorThumbnailJob?.cancel()
         activeTransformer = null
         activeBatchTransformer = null
     }
@@ -312,6 +319,7 @@ class ClipperViewModel(
     }
 
     fun resolveSocialLink(rawInput: String = _studioState.value.linkInput) {
+        studioThumbnailJob?.cancel()
         viewModelScope.launch {
             _studioState.update {
                 it.copy(isLoadingVideo = true, errorMessage = null)
@@ -321,24 +329,19 @@ class ClipperViewModel(
                 val streamUrl = resolved.playableStreamUrl
                 if (streamUrl != null) {
                     val streamUri = Uri.parse(streamUrl)
-                    val inspected = runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
-                    val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: resolved.durationMs
-                    val finalWidth = inspected?.width?.takeIf { it > 0 } ?: resolved.width
-                    val finalHeight = inspected?.height?.takeIf { it > 0 } ?: resolved.height
-                    val thumbs = runCatching {
-                        mediaProcessor.extractThumbnails(streamUri, finalDuration, count = 8)
-                    }.getOrDefault(emptyList())
+                    val cachedThumbs = mediaProcessor.getCachedThumbnails(streamUri, 8).orEmpty()
 
+                    // Tampilkan pemutar seketika tanpa menunggu ekstraksi thumbnail selesai
                     _studioState.update { state ->
-                        val initialEnd = minOf(finalDuration, state.selectedPlatform.maxRecommendedSec * 1000L)
-                            .coerceAtLeast(minOf(finalDuration, 1_000L))
+                        val initialEnd = minOf(resolved.durationMs, state.selectedPlatform.maxRecommendedSec * 1000L)
+                            .coerceAtLeast(minOf(resolved.durationMs, 1_000L))
                         state.copy(
                             selectedVideo = VideoMetadata(
                                 uriString = streamUrl,
                                 title = resolved.title,
-                                durationMs = finalDuration,
-                                width = finalWidth,
-                                height = finalHeight,
+                                durationMs = resolved.durationMs,
+                                width = resolved.width,
+                                height = resolved.height,
                                 sourcePlatform = resolved.platform,
                                 authorName = resolved.authorName,
                                 thumbnailUrl = resolved.thumbnailUrl,
@@ -346,14 +349,57 @@ class ClipperViewModel(
                                 hasPlayableStream = true,
                                 streamStatusNote = resolved.statusNote
                             ),
-                            filmstripThumbnails = thumbs,
+                            filmstripThumbnails = cachedThumbs,
                             trimStartMs = 0L,
                             trimEndMs = initialEnd,
                             suggestedHighlights = emptyList(),
                             isLoadingVideo = false
                         )
                     }
-                    _statusBannerMessage.value = "Stream ${resolved.platform.displayName} siap diputar & dipotong."
+                    _statusBannerMessage.value = "Stream ${resolved.platform.displayName} siap diputar lancar!"
+
+                    studioThumbnailJob = viewModelScope.launch {
+                        coroutineScope {
+                            launch {
+                                MediaPlaybackCache.prewarmStream(getApplication(), streamUrl)
+                            }
+                            val inspectedDeferred = async {
+                                runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
+                            }
+                            val inspected = inspectedDeferred.await()
+                            val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: resolved.durationMs
+                            val finalWidth = inspected?.width?.takeIf { it > 0 } ?: resolved.width
+                            val finalHeight = inspected?.height?.takeIf { it > 0 } ?: resolved.height
+
+                            val thumbs = if (cachedThumbs.isNotEmpty()) {
+                                cachedThumbs
+                            } else {
+                                runCatching {
+                                    mediaProcessor.extractThumbnails(streamUri, finalDuration, count = 8)
+                                }.getOrDefault(emptyList())
+                            }
+
+                            _studioState.update { state ->
+                                val currentMeta = state.selectedVideo
+                                if (currentMeta?.uriString != streamUrl) return@update state
+                                val updatedEnd = if (state.trimEndMs <= 1_000L || state.trimEndMs > finalDuration) {
+                                    minOf(finalDuration, state.selectedPlatform.maxRecommendedSec * 1000L)
+                                        .coerceAtLeast(minOf(finalDuration, 1_000L))
+                                } else {
+                                    state.trimEndMs
+                                }
+                                state.copy(
+                                    selectedVideo = currentMeta.copy(
+                                        durationMs = finalDuration,
+                                        width = finalWidth,
+                                        height = finalHeight
+                                    ),
+                                    filmstripThumbnails = if (thumbs.isNotEmpty()) thumbs else state.filmstripThumbnails,
+                                    trimEndMs = updatedEnd
+                                )
+                            }
+                        }
+                    }
                 } else {
                     _studioState.update { state ->
                         val initialEnd = minOf(resolved.durationMs, state.selectedPlatform.maxRecommendedSec * 1000L)
@@ -396,58 +442,67 @@ class ClipperViewModel(
     }
 
     fun loadPopularVideo(item: PopularVideoItem) {
-        viewModelScope.launch {
-            _studioState.update {
-                it.copy(
-                    importSource = StudioImportSource.SOCIAL_LINK,
-                    linkInput = item.streamUrl,
-                    isLoadingVideo = true,
-                    errorMessage = null
-                )
-            }
-            try {
-                val streamUri = Uri.parse(item.streamUrl)
+        studioThumbnailJob?.cancel()
+        val streamUri = Uri.parse(item.streamUrl)
+        val cachedThumbs = mediaProcessor.getCachedThumbnails(streamUri, 8).orEmpty()
+
+        // Tampilkan workspace dan mulai player secara instan tanpa blocking
+        _studioState.update { state ->
+            val initialEnd = minOf(item.durationMs, state.selectedPlatform.maxRecommendedSec * 1000L)
+                .coerceAtLeast(minOf(item.durationMs, 1_000L))
+            state.copy(
+                importSource = StudioImportSource.SOCIAL_LINK,
+                linkInput = item.streamUrl,
+                selectedVideo = VideoMetadata(
+                    uriString = item.streamUrl,
+                    title = item.title,
+                    durationMs = item.durationMs,
+                    width = item.width,
+                    height = item.height,
+                    sourcePlatform = item.platform,
+                    authorName = item.author,
+                    thumbnailUrl = item.thumbnailUrl,
+                    originalShareUrl = item.streamUrl,
+                    hasPlayableStream = true,
+                    streamStatusNote = "Video populer ${item.platform.displayName} siap diputar lancar!"
+                ),
+                filmstripThumbnails = cachedThumbs,
+                trimStartMs = 0L,
+                trimEndMs = initialEnd,
+                suggestedHighlights = emptyList(),
+                isLoadingVideo = false,
+                errorMessage = null
+            )
+        }
+        _statusBannerMessage.value = "Memutar \"${item.title}\" dengan mode Anti-Buff!"
+
+        studioThumbnailJob = viewModelScope.launch {
+            coroutineScope {
+                launch {
+                    MediaPlaybackCache.prewarmStream(getApplication(), item.streamUrl)
+                }
                 val inspected = runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
                 val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: item.durationMs
                 val finalWidth = inspected?.width?.takeIf { it > 0 } ?: item.width
                 val finalHeight = inspected?.height?.takeIf { it > 0 } ?: item.height
-                val thumbs = runCatching {
-                    mediaProcessor.extractThumbnails(streamUri, finalDuration, count = 8)
-                }.getOrDefault(emptyList())
+                val thumbs = if (cachedThumbs.isNotEmpty()) {
+                    cachedThumbs
+                } else {
+                    runCatching {
+                        mediaProcessor.extractThumbnails(streamUri, finalDuration, count = 8)
+                    }.getOrDefault(emptyList())
+                }
 
                 _studioState.update { state ->
-                    val initialEnd = minOf(finalDuration, state.selectedPlatform.maxRecommendedSec * 1000L)
-                        .coerceAtLeast(minOf(finalDuration, 1_000L))
+                    val currentMeta = state.selectedVideo
+                    if (currentMeta?.uriString != item.streamUrl) return@update state
                     state.copy(
-                        selectedVideo = VideoMetadata(
-                            uriString = item.streamUrl,
-                            title = item.title,
+                        selectedVideo = currentMeta.copy(
                             durationMs = finalDuration,
                             width = finalWidth,
-                            height = finalHeight,
-                            sourcePlatform = item.platform,
-                            authorName = item.author,
-                            thumbnailUrl = item.thumbnailUrl,
-                            originalShareUrl = item.streamUrl,
-                            hasPlayableStream = true,
-                            streamStatusNote = "Video populer ${item.platform.displayName} siap diputar & dipotong."
+                            height = finalHeight
                         ),
-                        filmstripThumbnails = thumbs,
-                        trimStartMs = 0L,
-                        trimEndMs = initialEnd,
-                        suggestedHighlights = emptyList(),
-                        isLoadingVideo = false
-                    )
-                }
-                _statusBannerMessage.value = "Video \"${item.title}\" siap diputar & dipotong!"
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load popular video", e)
-                _studioState.update {
-                    it.copy(
-                        isLoadingVideo = false,
-                        errorMessage = e.localizedMessage ?: "Gagal memuat video populer."
+                        filmstripThumbnails = if (thumbs.isNotEmpty()) thumbs else state.filmstripThumbnails
                     )
                 }
             }
@@ -455,6 +510,7 @@ class ClipperViewModel(
     }
 
     fun onVideoSelected(uri: Uri) {
+        studioThumbnailJob?.cancel()
         viewModelScope.launch {
             _studioState.update {
                 it.copy(isLoadingVideo = true, errorMessage = null)
@@ -467,7 +523,7 @@ class ClipperViewModel(
                     )
                 }
                 val metadata = mediaProcessor.extractMetadata(uri)
-                val thumbs = mediaProcessor.extractThumbnails(uri, metadata.durationMs, count = 8)
+                val cachedThumbs = mediaProcessor.getCachedThumbnails(uri, 8).orEmpty()
                 val currentMeta = _studioState.value.selectedVideo
                 val mergedMeta = if (currentMeta != null && !currentMeta.hasPlayableStream) {
                     metadata.copy(
@@ -487,12 +543,29 @@ class ClipperViewModel(
                         .coerceAtLeast(minOf(mergedMeta.durationMs, 1_000L))
                     state.copy(
                         selectedVideo = mergedMeta,
-                        filmstripThumbnails = thumbs,
+                        filmstripThumbnails = cachedThumbs,
                         trimStartMs = 0L,
                         trimEndMs = initialEnd,
                         suggestedHighlights = emptyList(),
                         isLoadingVideo = false
                     )
+                }
+
+                if (cachedThumbs.isEmpty()) {
+                    studioThumbnailJob = viewModelScope.launch {
+                        val thumbs = runCatching {
+                            mediaProcessor.extractThumbnails(uri, mergedMeta.durationMs, count = 8)
+                        }.getOrDefault(emptyList())
+                        if (thumbs.isNotEmpty()) {
+                            _studioState.update { state ->
+                                if (state.selectedVideo?.uriString == mergedMeta.uriString) {
+                                    state.copy(filmstripThumbnails = thumbs)
+                                } else {
+                                    state
+                                }
+                            }
+                        }
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -885,6 +958,7 @@ class ClipperViewModel(
     }
 
     fun loadSegmentForEditor(segmentId: Long) {
+        editorThumbnailJob?.cancel()
         viewModelScope.launch {
             _editorState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
@@ -896,25 +970,49 @@ class ClipperViewModel(
                     }
                     return@launch
                 }
-                val thumbs = if (project.hasPlayableStream) {
-                    runCatching {
-                        mediaProcessor.extractThumbnails(
-                            Uri.parse(project.sourceUri),
-                            project.durationMs,
-                            count = 8
-                        )
-                    }.getOrDefault(emptyList())
+                val sourceUri = Uri.parse(project.sourceUri)
+                val cachedThumbs = if (project.hasPlayableStream) {
+                    mediaProcessor.getCachedThumbnails(sourceUri, 8).orEmpty()
                 } else {
                     emptyList()
                 }
 
+                // Langsung buka Editor tanpa memblokir UI oleh ekstraksi frame
                 _editorState.value = EditorUiState(
                     project = project,
                     segment = segment,
-                    thumbnails = thumbs,
+                    thumbnails = cachedThumbs,
                     isLoading = false,
                     isPlaceholderAi = segment.isPlaceholderAi
                 )
+
+                if (project.hasPlayableStream) {
+                    editorThumbnailJob = viewModelScope.launch {
+                        coroutineScope {
+                            launch {
+                                MediaPlaybackCache.prewarmStream(getApplication(), project.sourceUri)
+                            }
+                            if (cachedThumbs.isEmpty()) {
+                                val thumbs = runCatching {
+                                    mediaProcessor.extractThumbnails(
+                                        sourceUri,
+                                        project.durationMs,
+                                        count = 8
+                                    )
+                                }.getOrDefault(emptyList())
+                                if (thumbs.isNotEmpty()) {
+                                    _editorState.update { state ->
+                                        if (state.segment?.id == segmentId) {
+                                            state.copy(thumbnails = thumbs)
+                                        } else {
+                                            state
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -80,6 +81,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -96,6 +98,7 @@ import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.MusicTrackRecommendation
 import com.example.domain.model.VideoFilterPreset
 import com.example.domain.model.VideoTransitionStyle
+import com.example.media.MediaPlaybackCache
 import com.example.ui.components.AiDemoNoticeBanner
 import com.example.ui.components.ExportProgressBanner
 import com.example.ui.components.FilmstripTimelineBar
@@ -174,7 +177,7 @@ fun ClipEditorScreen(
 
     val context = LocalContext.current
     val previewAudioPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
+        MediaPlaybackCache.buildFastExoPlayer(context).apply {
             repeatMode = Player.REPEAT_MODE_ONE
         }
     }
@@ -522,39 +525,68 @@ private fun EditorToolTile(
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = if (selected) NeonPurple.copy(alpha = 0.24f) else CosmicSurface,
+        color = if (selected) Color.Transparent else CosmicSurface,
         border = BorderStroke(
             width = if (selected) 1.5.dp else 1.dp,
-            color = if (selected) NeonPurple else CosmicOutline
+            color = if (selected) FuturisticCyan.copy(alpha = 0.85f) else CosmicOutline
         ),
         modifier = modifier
             .height(68.dp)
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .then(
+                    if (selected) {
+                        Modifier.background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    NeonPurple.copy(alpha = 0.34f),
+                                    FuturisticCyan.copy(alpha = 0.14f)
+                                )
+                            )
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (selected) FuturisticCyan else Color.White,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                ),
-                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = if (selected) FuturisticCyan else Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                    ),
+                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 3.dp)
+                        .size(width = 18.dp, height = 3.dp)
+                        .clip(CircleShape)
+                        .background(FuturisticCyan)
+                )
+            }
         }
     }
 }

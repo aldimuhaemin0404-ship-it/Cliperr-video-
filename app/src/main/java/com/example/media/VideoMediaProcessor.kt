@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.util.LruCache
 import androidx.annotation.OptIn
 import androidx.core.content.FileProvider
 import androidx.media3.common.Effect
@@ -43,6 +44,11 @@ import kotlin.coroutines.resumeWithException
 import kotlin.math.max
 
 class VideoMediaProcessor(private val context: Context) {
+
+    private val thumbnailCache = object : LruCache<String, List<Bitmap>>(12) {}
+
+    fun getCachedThumbnails(uri: Uri, count: Int = 8): List<Bitmap>? =
+        thumbnailCache.get("${uri}|$count")
 
     suspend fun extractMetadata(uri: Uri): VideoMetadata = withContext(Dispatchers.IO) {
         val displayName = queryDisplayName(context.contentResolver, uri)
@@ -88,6 +94,10 @@ class VideoMediaProcessor(private val context: Context) {
         count: Int = 8
     ): List<Bitmap> = withContext(Dispatchers.IO) {
         if (count <= 0 || durationMs <= 0L) return@withContext emptyList()
+        val cacheKey = "${uri}|$count"
+        thumbnailCache.get(cacheKey)?.let { cached ->
+            if (cached.isNotEmpty()) return@withContext cached
+        }
         val retriever = MediaMetadataRetriever()
         val bitmaps = mutableListOf<Bitmap>()
         try {
@@ -99,8 +109,8 @@ class VideoMediaProcessor(private val context: Context) {
                     retriever.getScaledFrameAtTime(
                         timeUs,
                         MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                        240,
-                        240
+                        160,
+                        160
                     )
                 } else {
                     retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
@@ -113,6 +123,9 @@ class VideoMediaProcessor(private val context: Context) {
             // Gracefully return any frames extracted so far
         } finally {
             runCatching { retriever.release() }
+        }
+        if (bitmaps.isNotEmpty()) {
+            thumbnailCache.put(cacheKey, bitmaps.toList())
         }
         bitmaps
     }

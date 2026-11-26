@@ -13,6 +13,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -160,8 +161,20 @@ fun WebPortalScreen(
                             style = MonoTimecodeStyle.copy(fontWeight = FontWeight.Bold),
                             color = Color.White,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFF10B981).copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                text = "Cepat",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFF6EE7B7),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
 
@@ -180,7 +193,7 @@ fun WebPortalScreen(
             }
         }
 
-        if (loadProgress in 1..99) {
+        AnimatedVisibility(visible = loadProgress in 1..99) {
             LinearProgressIndicator(
                 progress = { loadProgress / 100f },
                 color = FuturisticCyan,
@@ -206,6 +219,8 @@ fun WebPortalScreen(
                         settings.apply {
                             javaScriptEnabled = true
                             domStorageEnabled = true
+                            databaseEnabled = true
+                            cacheMode = WebSettings.LOAD_DEFAULT
                             allowFileAccess = true
                             allowContentAccess = true
                             mediaPlaybackRequiresUserGesture = false
