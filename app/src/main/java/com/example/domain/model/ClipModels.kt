@@ -46,6 +46,16 @@ enum class HookOverlayStyle(val label: String) {
     MINIMAL_BOLD("Minimal Bold")
 }
 
+enum class VideoTransitionStyle(
+    val label: String,
+    val description: String
+) {
+    NONE("Tanpa Transisi", "Potongan langsung (cut)"),
+    FADE("Fade", "Masuk & keluar halus lewat gelap"),
+    SLIDE("Slide", "Geser horizontal dinamis antar klip"),
+    DISSOLVE("Dissolve", "Pudar silang lembut dengan efek kilau")
+}
+
 enum class MusicMood(val label: String) {
     UPBEAT("Upbeat / Enerjik"),
     CORPORATE("Fokus / Profesional"),
@@ -187,6 +197,8 @@ data class ClipSegment(
     val showIntroHook: Boolean = true,
     val hookDurationMs: Long = 3_000L,
     val hookOverlayStyle: HookOverlayStyle = HookOverlayStyle.NEON_BADGE,
+    val transitionStyle: VideoTransitionStyle = VideoTransitionStyle.FADE,
+    val transitionDurationMs: Long = 600L,
     val includeAudio: Boolean = true,
     val selectedMusicTrackId: String? = null,
     val selectedMusicTitle: String? = null,

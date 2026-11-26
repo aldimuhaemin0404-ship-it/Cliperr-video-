@@ -205,8 +205,14 @@ class VideoMediaProcessor(private val context: Context) {
                 .build()
 
             val overlayEffect = CaptionOverlayEffects.buildOverlayEffect(segment)
+            val transitionEffects = VideoTransitionEffects.buildEffects(
+                style = segment.transitionStyle,
+                transitionDurationMs = segment.transitionDurationMs,
+                clipDurationMs = segment.durationMs
+            )
             val videoEffects: List<Effect> = buildAspectRatioEffects(segment.aspectRatio, segment.exportQuality) +
                 VideoFilterEffects.buildEffects(segment.videoFilter, segment.brightness) +
+                transitionEffects +
                 listOfNotNull(overlayEffect)
             val editedMediaItem = EditedMediaItem.Builder(inputMediaItem)
                 .setRemoveAudio(!segment.includeAudio)
@@ -261,6 +267,117 @@ class VideoMediaProcessor(private val context: Context) {
                     durationMs = segment.durationMs,
                     fileSizeBytes = outputFile.length(),
                     aspectRatio = segment.aspectRatio,
+                    galleryUri = galleryUri?.toString(),
+                    exportedAtMs = System.currentTimeMillis()
+                )
+            } catch (t: Throwable) {
+                if (outputFile.exists()) outputFile.delete()
+                throw t
+            }
+        }
+    }
+
+    @OptIn(UnstableApi::class)
+    suspend fun exportCombinedClipsWithTransitions(
+        sourceUri: Uri,
+        projectTitle: String,
+        segments: List<ClipSegment>,
+        onProgress: (Int) -> Unit,
+        onTransformerCreated: (Transformer) -> Unit = {}
+    ): ExportedClip {
+        require(segments.isNotEmpty()) { "Minimal 1 klip diperlukan untuk menggabungkan transisi." }
+        val lead = segments.first()
+        val totalDurationMs = segments.sumOf { it.durationMs }.coerceAtLeast(1_000L)
+
+        val resolvedMusicUri = if (!lead.selectedMusicUrl.isNullOrBlank()) {
+            runCatching {
+                RoyaltyFreeMusicCatalog.resolvePlayableAudioUri(
+                    context = context,
+                    audioUrl = lead.selectedMusicUrl,
+                    trackId = lead.selectedMusicTrackId,
+                    minDurationMs = totalDurationMs
+                )
+            }.getOrNull()
+        } else {
+            null
+        }
+
+        return withContext(Dispatchers.Main) {
+            val clipsDir = File(context.filesDir, "clips").apply {
+                if (!exists()) mkdirs()
+            }
+            val safeTitle = projectTitle
+                .replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
+                .take(24)
+                .ifBlank { "kompilasi" }
+            val outputFile = File(clipsDir, "${safeTitle}_reel_${System.currentTimeMillis()}.mp4")
+
+            val editedItems = segments.map { seg ->
+                val clipConfig = MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(seg.startMs.coerceAtLeast(0L))
+                    .setEndPositionMs(seg.endMs.coerceAtLeast(seg.startMs + 500L))
+                    .build()
+                val mediaItem = MediaItem.Builder()
+                    .setUri(sourceUri)
+                    .setClippingConfiguration(clipConfig)
+                    .build()
+                val overlayEffect = CaptionOverlayEffects.buildOverlayEffect(seg)
+                val transitionEffects = VideoTransitionEffects.buildEffects(
+                    style = seg.transitionStyle,
+                    transitionDurationMs = seg.transitionDurationMs,
+                    clipDurationMs = seg.durationMs
+                )
+                val videoEffects: List<Effect> = buildAspectRatioEffects(lead.aspectRatio, lead.exportQuality) +
+                    VideoFilterEffects.buildEffects(seg.videoFilter, seg.brightness) +
+                    transitionEffects +
+                    listOfNotNull(overlayEffect)
+                EditedMediaItem.Builder(mediaItem)
+                    .setRemoveAudio(!seg.includeAudio)
+                    .setEffects(Effects(emptyList(), videoEffects))
+                    .build()
+            }
+
+            val videoSequence = EditedMediaItemSequence.Builder(editedItems).build()
+            val sequences = if (resolvedMusicUri != null) {
+                val vol = lead.musicVolume.coerceIn(0.05f, 1.0f)
+                val volumeProcessor = ChannelMixingAudioProcessor().apply {
+                    putChannelMixingMatrix(ChannelMixingMatrix.create(2, 2).scaleBy(vol))
+                    putChannelMixingMatrix(ChannelMixingMatrix.create(1, 2).scaleBy(vol))
+                }
+                val musicItem = EditedMediaItem.Builder(MediaItem.fromUri(resolvedMusicUri))
+                    .setRemoveVideo(true)
+                    .setEffects(Effects(listOf(volumeProcessor), emptyList()))
+                    .build()
+                val musicSeq = EditedMediaItemSequence.Builder(listOf(musicItem))
+                    .setIsLooping(true)
+                    .build()
+                listOf(videoSequence, musicSeq)
+            } else {
+                listOf(videoSequence)
+            }
+
+            val composition = Composition.Builder(sequences).build()
+            try {
+                runTransformer(
+                    outputFile = outputFile,
+                    onProgress = onProgress,
+                    onTransformerCreated = onTransformerCreated
+                ) { transformer ->
+                    transformer.start(composition, outputFile.absolutePath)
+                }
+
+                val galleryUri = runCatching {
+                    saveFileToGallery(outputFile, totalDurationMs)
+                }.getOrNull()
+
+                ExportedClip(
+                    projectId = lead.projectId,
+                    segmentId = lead.id,
+                    title = "$projectTitle (Gabungan ${segments.size} Klip)",
+                    filePath = outputFile.absolutePath,
+                    durationMs = totalDurationMs,
+                    fileSizeBytes = outputFile.length(),
+                    aspectRatio = lead.aspectRatio,
                     galleryUri = galleryUri?.toString(),
                     exportedAtMs = System.currentTimeMillis()
                 )

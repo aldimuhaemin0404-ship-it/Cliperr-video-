@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.MovieCreation
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircleFilled
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
@@ -143,6 +144,7 @@ fun StudioScreen(
     onSeeAllPopular: () -> Unit,
     onOpenProject: (Long) -> Unit,
     onDeleteProject: (Long) -> Unit,
+    onOpenWebStudio: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedLinkHint by remember { mutableStateOf("https://youtu.be/... atau https://vt.tiktok.com/...") }
@@ -192,7 +194,7 @@ fun StudioScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                HomeTopHeader()
+                HomeTopHeader(onOpenWebStudio = onOpenWebStudio)
             }
 
             item {
@@ -359,7 +361,9 @@ fun StudioScreen(
 }
 
 @Composable
-private fun HomeTopHeader() {
+private fun HomeTopHeader(
+    onOpenWebStudio: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -388,22 +392,27 @@ private fun HomeTopHeader() {
 
         Surface(
             shape = RoundedCornerShape(50),
-            color = NeonPurple.copy(alpha = 0.16f),
-            border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.5f))
+            color = NeonPurple.copy(alpha = 0.18f),
+            border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.65f)),
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .clickable(onClick = onOpenWebStudio)
+                .minimumInteractiveComponentSize()
+                .testTag("open_web_studio_button")
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = null,
+                    imageVector = Icons.Filled.Public,
+                    contentDescription = stringResource(R.string.home_open_web_studio),
                     tint = FuturisticCyan,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(15.dp)
                 )
                 Text(
-                    text = "AI STUDIO",
+                    text = stringResource(R.string.home_open_web_studio),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )

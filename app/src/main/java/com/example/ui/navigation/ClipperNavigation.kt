@@ -56,6 +56,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -169,6 +172,7 @@ fun AiClipperApp(
 
     val snackbarHostState = remember { SnackbarHostState() }
     var lastCompletedExport by remember { mutableStateOf<ExportedClip?>(null) }
+    val context = LocalContext.current
 
     LaunchedEffect(sharedLinkText) {
         if (!sharedLinkText.isNullOrBlank()) {
@@ -417,7 +421,11 @@ fun AiClipperApp(
                                     onBrightnessChanged = viewModel::updateStudioBrightness,
                                     onResetFilters = viewModel::resetStudioFilters,
                                     onSuggestTimestamps = viewModel::suggestTimestampsForStudio,
-                                    onExportManualClip = viewModel::exportManualStudioClip,
+                                    onExportManualClip = {
+                                        viewModel.prepareManualClipForExportSettings { segId ->
+                                            navController.navigate("export_settings/$segId")
+                                        }
+                                    },
                                     onPlatformSelected = viewModel::updateTargetPlatform,
                                     onFocusTopicChanged = viewModel::updateFocusTopic,
                                     onAnalyzeClick = startAnalysisFlow,
@@ -438,7 +446,17 @@ fun AiClipperApp(
                                             launchSingleTop = true
                                         }
                                     },
-                                    onDeleteProject = viewModel::deleteProject
+                                    onDeleteProject = viewModel::deleteProject,
+                                    onOpenWebStudio = {
+                                        val webIntent = Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse("https://ais-pre-kju5nzh3psq4ly2lezgpni-831596576627.asia-northeast1.run.app")
+                                        )
+                                        runCatching { context.startActivity(webIntent) }
+                                            .onFailure {
+                                                viewModel.postStatusMessage("Browser tidak tersedia untuk membuka Versi Web.")
+                                            }
+                                    }
                                 )
                             }
 
@@ -533,6 +551,12 @@ fun AiClipperApp(
                                     },
                                     onToggleFavorite = viewModel::toggleSegmentFavorite,
                                     onBookmarkAllFavorites = viewModel::bookmarkTopClipsFavorite,
+                                    onMergeAllWithTransitions = {
+                                        val projId = selectedProjectId ?: projects.firstOrNull()?.id
+                                        if (projId != null) {
+                                            viewModel.exportCombinedProjectWithTransitions(projId)
+                                        }
+                                    },
                                     onGoToStudio = {
                                         navController.navigate(ROUTE_STUDIO) {
                                             popUpTo(ROUTE_STUDIO) { inclusive = true }
@@ -583,6 +607,14 @@ fun AiClipperApp(
                                     onToggleMusicPreview = viewModel::toggleMusicPreview,
                                     onStopMusicPreview = viewModel::stopMusicPreview,
                                     onUpdateMusicVolume = viewModel::updateEditorMusicVolume,
+                                    onUpdateTransitionStyle = viewModel::updateEditorTransitionStyle,
+                                    onUpdateTransitionDuration = viewModel::updateEditorTransitionDuration,
+                                    onMergeAllClipsWithTransitions = {
+                                        val projId = editorState.project?.id ?: selectedProjectId
+                                        if (projId != null) {
+                                            viewModel.exportCombinedProjectWithTransitions(projId)
+                                        }
+                                    },
                                     onUpdateHook = viewModel::updateEditorHook,
                                     onUpdateCaption = viewModel::updateEditorCaption,
                                     onRegenerateCaption = viewModel::regenerateCaptionWithTone,

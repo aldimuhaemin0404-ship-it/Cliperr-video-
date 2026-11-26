@@ -124,6 +124,8 @@ class AudioMusicAndHookFeatureTest {
             showIntroHook = true,
             hookDurationMs = 3_000L,
             hookOverlayStyle = HookOverlayStyle.CYBER_BANNER,
+            transitionStyle = com.example.domain.model.VideoTransitionStyle.SLIDE,
+            transitionDurationMs = 1_000L,
             selectedMusicTrackId = "rf_neon_pulse",
             selectedMusicTitle = "Neon Horizon Pulse",
             selectedMusicUrl = "synth://rf_neon_pulse",
@@ -142,5 +144,52 @@ class AudioMusicAndHookFeatureTest {
         assertEquals(segment.musicVolume, roundtrip.musicVolume, 0.001f)
         assertEquals(segment.audioMoodLabel, roundtrip.audioMoodLabel)
         assertEquals(segment.audioBpm, roundtrip.audioBpm)
+        assertEquals(segment.transitionStyle, roundtrip.transitionStyle)
+        assertEquals(segment.transitionDurationMs, roundtrip.transitionDurationMs)
+    }
+
+    @Test
+    fun `VideoTransitionEffects builds GPU effects for Fade, Slide, and Dissolve`() {
+        assertTrue(
+            com.example.media.VideoTransitionEffects.buildEffects(
+                style = com.example.domain.model.VideoTransitionStyle.NONE,
+                transitionDurationMs = 600L,
+                clipDurationMs = 8_000L
+            ).isEmpty()
+        )
+        assertEquals(
+            1,
+            com.example.media.VideoTransitionEffects.buildEffects(
+                style = com.example.domain.model.VideoTransitionStyle.FADE,
+                transitionDurationMs = 600L,
+                clipDurationMs = 8_000L
+            ).size
+        )
+        assertEquals(
+            2,
+            com.example.media.VideoTransitionEffects.buildEffects(
+                style = com.example.domain.model.VideoTransitionStyle.SLIDE,
+                transitionDurationMs = 600L,
+                clipDurationMs = 8_000L
+            ).size
+        )
+        assertEquals(
+            2,
+            com.example.media.VideoTransitionEffects.buildEffects(
+                style = com.example.domain.model.VideoTransitionStyle.DISSOLVE,
+                transitionDurationMs = 600L,
+                clipDurationMs = 8_000L
+            ).size
+        )
+    }
+
+    @Test
+    fun `Vertical aspect ratios 9-16 and 4-5 with 1080p and 720p compute valid target dimensions`() {
+        assertEquals(1080, AspectRatioPreset.VERTICAL_9_16.targetWidth)
+        assertEquals(1920, AspectRatioPreset.VERTICAL_9_16.targetHeight)
+        assertEquals(1080, AspectRatioPreset.PORTRAIT_4_5.targetWidth)
+        assertEquals(1350, AspectRatioPreset.PORTRAIT_4_5.targetHeight)
+        assertEquals(1080, com.example.domain.model.ExportQuality.HD_1080P.shortSidePx)
+        assertEquals(720, com.example.domain.model.ExportQuality.HD_720P.shortSidePx)
     }
 }

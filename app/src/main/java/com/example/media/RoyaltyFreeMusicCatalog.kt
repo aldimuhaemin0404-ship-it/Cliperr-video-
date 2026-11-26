@@ -137,8 +137,10 @@ object RoyaltyFreeMusicCatalog {
             "https://$clean"
         }
 
-        val uri = runCatching { Uri.parse(normalized) }.getOrNull() ?: return null
-        val fileName = uri.lastPathSegment
+        val parsedUri = runCatching { java.net.URI(normalized) }.getOrNull() ?: return null
+        val path = parsedUri.path.orEmpty()
+        val lastSeg = path.trimEnd('/').substringAfterLast('/').ifBlank { null }
+        val fileName = lastSeg
             ?.substringBefore('?')
             ?.substringBeforeLast('.')
             ?.replace('_', ' ')
@@ -149,7 +151,7 @@ object RoyaltyFreeMusicCatalog {
         return MusicTrackRecommendation(
             id = "custom_${normalized.hashCode()}",
             title = fileName.take(36),
-            artist = uri.host ?: "URL Audio Eksternal",
+            artist = parsedUri.host ?: "URL Audio Eksternal",
             mood = MusicMood.UPBEAT,
             bpm = 110,
             durationSec = 30,

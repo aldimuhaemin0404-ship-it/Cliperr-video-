@@ -26,21 +26,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brightness6
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Compare
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.Button
@@ -94,6 +95,7 @@ import com.example.domain.model.ExportProgressState
 import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.MusicTrackRecommendation
 import com.example.domain.model.VideoFilterPreset
+import com.example.domain.model.VideoTransitionStyle
 import com.example.ui.components.AiDemoNoticeBanner
 import com.example.ui.components.ExportProgressBanner
 import com.example.ui.components.FilmstripTimelineBar
@@ -121,7 +123,7 @@ private enum class EditorTool(val label: String) {
     RATIO("Rasio"),
     FILTER("Filter"),
     BRIGHTNESS("Cahaya"),
-    RESET("Reset")
+    TRANSITION("Transisi")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -147,6 +149,9 @@ fun ClipEditorScreen(
     onToggleMusicPreview: (MusicTrackRecommendation) -> Unit,
     onStopMusicPreview: () -> Unit,
     onUpdateMusicVolume: (Float) -> Unit,
+    onUpdateTransitionStyle: (VideoTransitionStyle) -> Unit,
+    onUpdateTransitionDuration: (Long) -> Unit,
+    onMergeAllClipsWithTransitions: () -> Unit,
     onUpdateHook: (String) -> Unit,
     onUpdateCaption: (String) -> Unit,
     onRegenerateCaption: (CaptionTone) -> Unit,
@@ -301,6 +306,8 @@ fun ClipEditorScreen(
                                 showIntroHook = segment.showIntroHook,
                                 hookDurationMs = segment.hookDurationMs,
                                 hookOverlayStyle = segment.hookOverlayStyle,
+                                transitionStyle = segment.transitionStyle,
+                                transitionDurationMs = segment.transitionDurationMs,
                                 selectedMusicTitle = segment.selectedMusicTitle
                             )
                         } else {
@@ -332,14 +339,7 @@ fun ClipEditorScreen(
                     item {
                         EditorToolsGridCard(
                             activeTool = activeTool,
-                            onToolSelected = { tool ->
-                                if (tool == EditorTool.RESET) {
-                                    onResetFilters()
-                                    activeTool = EditorTool.FILTER
-                                } else {
-                                    activeTool = tool
-                                }
-                            }
+                            onToolSelected = { tool -> activeTool = tool }
                         )
                     }
 
@@ -382,7 +382,7 @@ fun ClipEditorScreen(
                             }
                         }
 
-                        EditorTool.FILTER, EditorTool.BRIGHTNESS, EditorTool.RESET -> {
+                        EditorTool.FILTER, EditorTool.BRIGHTNESS -> {
                             item {
                                 VideoFilterControlsCard(
                                     selectedFilter = segment.videoFilter,
@@ -390,6 +390,18 @@ fun ClipEditorScreen(
                                     onFilterSelected = onUpdateFilter,
                                     onBrightnessChanged = onUpdateBrightness,
                                     onResetFilters = onResetFilters
+                                )
+                            }
+                        }
+
+                        EditorTool.TRANSITION -> {
+                            item {
+                                EditorTransitionCard(
+                                    segment = segment,
+                                    canMerge = project.hasPlayableStream && exportProgress !is ExportProgressState.Exporting,
+                                    onSelectStyle = onUpdateTransitionStyle,
+                                    onSelectDuration = onUpdateTransitionDuration,
+                                    onMergeAllClips = onMergeAllClipsWithTransitions
                                 )
                             }
                         }
@@ -474,7 +486,7 @@ private fun EditorToolsGridCard(
         EditorTool.RATIO to Icons.Filled.AspectRatio,
         EditorTool.FILTER to Icons.Filled.Palette,
         EditorTool.BRIGHTNESS to Icons.Filled.Brightness6,
-        EditorTool.RESET to Icons.Filled.RestartAlt
+        EditorTool.TRANSITION to Icons.Filled.Compare
     )
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1348,6 +1360,141 @@ private fun EditorHookSubtitleCard(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditorTransitionCard(
+    segment: ClipSegment,
+    canMerge: Boolean,
+    onSelectStyle: (VideoTransitionStyle) -> Unit,
+    onSelectDuration: (Long) -> Unit,
+    onMergeAllClips: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+        border = BorderStroke(1.dp, CosmicOutline)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Compare,
+                    contentDescription = null,
+                    tint = FuturisticCyan
+                )
+                Text(
+                    text = stringResource(R.string.editor_transition_section_title),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                VideoTransitionStyle.entries.forEach { style ->
+                    val selected = segment.transitionStyle == style
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) NeonPurple.copy(alpha = 0.24f) else CosmicSurfaceElevated,
+                        border = BorderStroke(
+                            width = if (selected) 1.5.dp else 1.dp,
+                            color = if (selected) FuturisticCyan else CosmicOutline
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onSelectStyle(style) }
+                            .testTag("transition_style_${style.name.lowercase()}")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = style.label,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = style.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (selected) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = "Aktif",
+                                    tint = FuturisticCyan
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (segment.transitionStyle != VideoTransitionStyle.NONE) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = stringResource(R.string.editor_transition_duration_label),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(400L to "0.4 Detik", 600L to "0.6 Detik", 1_000L to "1.0 Detik").forEach { (durMs, label) ->
+                            FilterChip(
+                                selected = segment.transitionDurationMs == durMs,
+                                onClick = { onSelectDuration(durMs) },
+                                label = { Text(label) },
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("transition_duration_$durMs")
+                            )
+                        }
+                    }
+                }
+            }
+
+            OutlinedButton(
+                onClick = onMergeAllClips,
+                enabled = canMerge,
+                border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag("editor_merge_clips_transitions_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MergeType,
+                    contentDescription = null,
+                    tint = FuturisticCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.editor_merge_clips_cta),
+                    color = FuturisticCyan
+                )
             }
         }
     }

@@ -43,8 +43,10 @@ class SocialLinkResolver(
     }
 
     fun detectPlatform(url: String): SocialSourcePlatform {
-        val host = runCatching { Uri.parse(url).host?.lowercase(Locale.ROOT).orEmpty() }
-            .getOrDefault("")
+        val rawHost = runCatching { java.net.URI(url).host }.getOrNull()
+            ?: runCatching { Uri.parse(url)?.host }.getOrNull()
+            ?: ""
+        val host = rawHost.lowercase(Locale.ROOT)
             .removePrefix("www.")
             .removePrefix("m.")
 

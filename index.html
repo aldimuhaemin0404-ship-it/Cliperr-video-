@@ -1,1 +1,619 @@
-Saya bisa buatkan halaman ALDI AI CLIPPER dengan desain modern, logo, deskripsi fitur AI, dan tombol mulai.
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ALDI AI CLIPPER — Cari · Potong · Edit · Share</title>
+  <meta name="description" content="ALDI AI CLIPPER: Studio Web & Android untuk auto-clipping video viral, hook 3 detik, musik latar AI, transisi mulus, dan ekspor HD 9:16 & 4:5." />
+  <style>
+    :root {
+      --bg: #070914;
+      --surface: #0F1426;
+      --surface-elevated: #171E38;
+      --outline: #2B3459;
+      --purple: #9333EA;
+      --blue: #2563EB;
+      --cyan: #06B6D4;
+      --magenta: #EC4899;
+      --emerald: #10B981;
+      --amber: #F59E0B;
+      --text: #F8FAFC;
+      --muted: #94A3B8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(circle at 12% 8%, rgba(147, 51, 234, 0.22), transparent 42%),
+        radial-gradient(circle at 88% 12%, rgba(6, 182, 212, 0.18), transparent 40%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(14px);
+      background: rgba(7, 9, 20, 0.84);
+      border-bottom: 1px solid rgba(43, 52, 89, 0.7);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 70px;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-accent {
+      background: linear-gradient(90deg, var(--cyan), var(--purple), var(--magenta));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.92rem;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .btn:active { transform: scale(0.98); }
+
+    .btn-primary {
+      background: linear-gradient(90deg, var(--cyan), var(--purple), var(--magenta));
+      color: #fff;
+      box-shadow: 0 8px 26px rgba(147, 51, 234, 0.38);
+    }
+
+    .btn-outline {
+      background: rgba(23, 30, 56, 0.8);
+      border-color: rgba(6, 182, 212, 0.55);
+      color: var(--text);
+    }
+
+    .btn-outline:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 0 18px rgba(6, 182, 212, 0.24);
+    }
+
+    /* Hero */
+    .hero {
+      padding: 46px 0 36px;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 32px;
+      align-items: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.45);
+      color: var(--cyan);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 4.4vw, 3.1rem);
+      line-height: 1.12;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 14px;
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 1.04rem;
+      max-width: 560px;
+      margin-bottom: 24px;
+    }
+
+    .hero-cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      font-size: 0.78rem;
+      padding: 5px 11px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--outline);
+      color: #CBD5E1;
+    }
+
+    /* Interactive Web Studio Previewer */
+    .studio-card {
+      background: linear-gradient(145deg, rgba(23, 30, 56, 0.95), rgba(15, 20, 38, 0.96));
+      border: 1px solid rgba(147, 51, 234, 0.5);
+      border-radius: 22px;
+      padding: 20px;
+      box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .preview-stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .video-frame {
+      position: relative;
+      width: 220px;
+      aspect-ratio: 9 / 16;
+      border-radius: 18px;
+      overflow: hidden;
+      background: radial-gradient(circle at 30% 25%, #3B1768, #0D1633 70%, #050814);
+      border: 2px solid rgba(6, 182, 212, 0.7);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 12px;
+      transition: aspect-ratio 0.25s ease, transform 0.35s ease, opacity 0.35s ease;
+    }
+
+    .video-frame.ratio-4-5 {
+      aspect-ratio: 4 / 5;
+      width: 256px;
+    }
+
+    .video-frame.anim-fade { animation: transFade 1.8s infinite alternate; }
+    .video-frame.anim-slide { animation: transSlide 1.8s infinite ease-in-out; }
+    .video-frame.anim-dissolve { animation: transDissolve 1.8s infinite ease-in-out; }
+
+    @keyframes transFade {
+      0%, 25% { opacity: 0.35; }
+      45%, 100% { opacity: 1; }
+    }
+    @keyframes transSlide {
+      0%, 20% { transform: translateX(18px); opacity: 0.7; }
+      45%, 100% { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes transDissolve {
+      0%, 25% { transform: scale(1.06); filter: brightness(1.25) saturate(1.3); opacity: 0.75; }
+      50%, 100% { transform: scale(1); filter: brightness(1) saturate(1); opacity: 1; }
+    }
+
+    .hook-badge-live {
+      background: rgba(24, 12, 54, 0.9);
+      border: 1.5px solid var(--purple);
+      border-radius: 12px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+
+    .hook-kicker {
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: var(--cyan);
+      letter-spacing: 0.06em;
+    }
+
+    .hook-headline {
+      font-size: 0.84rem;
+      font-weight: 800;
+      color: #fff;
+      margin-top: 2px;
+    }
+
+    .frame-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.7rem;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      color: var(--cyan);
+      background: rgba(0, 0, 0, 0.55);
+      padding: 5px 8px;
+      border-radius: 8px;
+    }
+
+    .caption-pill {
+      background: rgba(0, 0, 0, 0.72);
+      border: 1px solid rgba(147, 51, 234, 0.65);
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .controls-grid {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .chip-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      padding: 6px 11px;
+      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--outline);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .chip.active {
+      background: rgba(147, 51, 234, 0.25);
+      border-color: var(--cyan);
+      color: #fff;
+    }
+
+    .url-bar {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .url-input {
+      flex: 1;
+      min-width: 0;
+      background: var(--bg);
+      border: 1px solid var(--outline);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 0.85rem;
+    }
+
+    .url-input:focus {
+      outline: none;
+      border-color: var(--cyan);
+    }
+
+    .notice-banner {
+      margin-top: 10px;
+      padding: 9px 12px;
+      border-radius: 12px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      color: #FDE68A;
+      font-size: 0.78rem;
+    }
+
+    /* Features Grid */
+    section.features {
+      padding: 28px 0 56px;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .section-sub {
+      color: var(--muted);
+      margin-bottom: 22px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--outline);
+      border-radius: 18px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(147, 51, 234, 0.25));
+      border: 1px solid rgba(6, 182, 212, 0.4);
+      display: grid;
+      place-items: center;
+      font-size: 1.15rem;
+    }
+
+    .feature-card h3 {
+      font-size: 1.02rem;
+      font-weight: 700;
+    }
+
+    .feature-card p {
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    footer {
+      border-top: 1px solid var(--outline);
+      padding: 24px 0 36px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; padding-top: 26px; }
+      .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <a href="#top" class="brand">
+        <svg width="38" height="38" viewBox="0 0 64 64" fill="none" aria-label="Logo Aldi AI Clipper">
+          <defs>
+            <linearGradient id="aldiGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#06B6D4"/>
+              <stop offset="50%" stop-color="#9333EA"/>
+              <stop offset="100%" stop-color="#EC4899"/>
+            </linearGradient>
+          </defs>
+          <rect x="4" y="4" width="56" height="56" rx="16" fill="#0F1426" stroke="url(#aldiGrad)" stroke-width="2.5"/>
+          <path d="M16 24L48 16L50 24H16V24Z" fill="url(#aldiGrad)"/>
+          <rect x="16" y="25" width="34" height="23" rx="5" fill="#171E38" stroke="#06B6D4" stroke-width="1.8"/>
+          <polygon points="29,31 41,36.5 29,42" fill="#F8FAFC"/>
+        </svg>
+        <span class="brand-title">ALDI <span class="brand-accent">AI CLIPPER</span></span>
+      </a>
+      <div class="nav-actions">
+        <a href="#studio-web" class="btn btn-outline">Coba Studio Web</a>
+        <a id="openAndroidTop" href="aldiaiclipper://open" class="btn btn-primary">Mulai di Android</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top" class="container">
+    <section class="hero">
+      <div>
+        <div class="badge">✨ DARK FUTURISTIC STUDIO • 9:16 &amp; 4:5 HD</div>
+        <h1>Ubah Video Panjang Jadi <span class="brand-accent">Klip Viral Terbaik</span> dengan AI!</h1>
+        <p>
+          Cari momen terbaik otomatis, tambahkan <strong>Visual Hook 3 Detik</strong>, analisis audio untuk
+          <strong>Musik Latar Bebas Royalti</strong>, terapkan transisi <strong>Fade / Slide / Dissolve</strong>,
+          dan ekspor HD vertikal siap bagikan ke TikTok, Reels, &amp; Shorts.
+        </p>
+
+        <div class="hero-cta">
+          <a href="#studio-web" class="btn btn-primary">🚀 Mulai Edit Sekarang</a>
+          <a id="openAndroidHero" href="aldiaiclipper://open" class="btn btn-outline">📱 Buka Aplikasi Android</a>
+        </div>
+
+        <div class="pill-row">
+          <span class="pill">Batch Queue Multi-Video</span>
+          <span class="pill">Import URL Sosmed &amp; MP4</span>
+          <span class="pill">Hook Overlay 0–3 Detik</span>
+          <span class="pill">Transisi Fade · Slide · Dissolve</span>
+          <span class="pill">Ekspor 1080p &amp; 720p</span>
+        </div>
+      </div>
+
+      <!-- Interactive Studio Web Widget -->
+      <div id="studio-web" class="studio-card">
+        <div class="preview-stage">
+          <div id="previewFrame" class="video-frame anim-fade">
+            <div class="frame-meta">
+              <span id="metaRatio">9:16 • 1080×1920</span>
+              <span id="metaTrans">Fade 600ms</span>
+            </div>
+
+            <div id="hookBox" class="hook-badge-live">
+              <div class="hook-kicker">HOOK 0–3 DETIK [SAMPEL AI]</div>
+              <div id="hookHeadline" class="hook-headline">Tunggu momen puncak di detik ke-3 ini! 🔥</div>
+            </div>
+
+            <div class="caption-pill" id="musicPill">
+              🎵 Neon Horizon Pulse · 124 BPM
+            </div>
+          </div>
+        </div>
+
+        <div class="controls-grid">
+          <div>
+            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:4px;">Pilih Rasio Vertikal &amp; Resolusi Ekspor:</div>
+            <div class="chip-group">
+              <button type="button" class="chip active" data-ratio="9:16" onclick="setRatio('9:16', this)">9:16 Vertikal</button>
+              <button type="button" class="chip" data-ratio="4:5" onclick="setRatio('4:5', this)">4:5 Vertikal</button>
+              <button type="button" class="chip active" data-res="1080p" onclick="setRes('1080p', this)">HD 1080p</button>
+              <button type="button" class="chip" data-res="720p" onclick="setRes('720p', this)">720p</button>
+            </div>
+          </div>
+
+          <div>
+            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:4px;">Gaya Transisi Antar Klip:</div>
+            <div class="chip-group">
+              <button type="button" class="chip active" data-trans="fade" onclick="setTransition('fade', 'Fade', this)">Fade</button>
+              <button type="button" class="chip" data-trans="slide" onclick="setTransition('slide', 'Slide', this)">Slide</button>
+              <button type="button" class="chip" data-trans="dissolve" onclick="setTransition('dissolve', 'Dissolve', this)">Dissolve</button>
+              <button type="button" class="chip" data-trans="none" onclick="setTransition('none', 'Tanpa Transisi', this)">Tanpa Transisi</button>
+            </div>
+          </div>
+
+          <div>
+            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:4px;">Tambah URL Video &amp; Kirim ke Aplikasi Android:</div>
+            <div class="url-bar">
+              <input id="videoUrlInput" type="url" class="url-input" placeholder="https://youtu.be/... atau https://example.com/video.mp4" />
+              <button type="button" class="btn btn-primary" style="min-height:40px; padding:8px 14px;" onclick="launchWithUrl()">Tambah URL</button>
+            </div>
+          </div>
+
+          <div class="notice-banner" id="webStatus">
+            💡 Mode pratinjau Web siap. Untuk render MP4 Media3 + Share Sheet native, klik <strong>Tambah URL</strong> atau <strong>Buka Aplikasi Android</strong>.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <h2 class="section-title">Fitur Lengkap ALDI AI CLIPPER</h2>
+      <p class="section-sub">Dirancang untuk kreator konten TikTok, Instagram Reels, dan YouTube Shorts.</p>
+
+      <div class="grid-3">
+        <article class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <h3>Deteksi 5 Klip Viral + Batch Queue</h3>
+          <p>Unggah banyak video atau tempel daftar URL sekaligus, pantau progress bar tiap item, lalu pilih 5 klip terbaik.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">🎵</div>
+          <h3>Analisis Audio &amp; Musik Latar AI</h3>
+          <p>Analisis energi, tempo (BPM), dan mood audio untuk rekomendasi musik bebas royalti serta dukungan URL audio kustom.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Visual Hook 3 Detik Pertama</h3>
+          <p>Otomatis membuat teks visual pembuka selama 0–3 detik pertama dan membakarnya ke dalam hasil video MP4.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">🎞️</div>
+          <h3>Transisi Fade, Slide &amp; Dissolve</h3>
+          <p>Pilih gaya transisi mulus antar klip tunggal maupun penggabungan seluruh klip proyek menjadi satu video sorotan.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">📐</div>
+          <h3>Ekspor Vertikal 9:16 &amp; 4:5 (1080p/720p)</h3>
+          <p>Layar pengaturan pra-ekspor memastikan rasio vertikal dan resolusi presisi (1080×1920, 1080×1350, 720×1280) sebelum render.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">🚀</div>
+          <h3>Share Sheet &amp; Simpan Galeri</h3>
+          <p>Simpan otomatis ke Movies/AIClipper dan bagikan langsung ke TikTok, Instagram, YouTube Shorts, WhatsApp, dan lainnya.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <span>© 2026 ALDI AI CLIPPER — Cosmic Dark Neon Studio</span>
+      <span>Cari · Potong · Edit · Share</span>
+    </footer>
+  </main>
+
+  <script>
+    let currentRatio = '9:16';
+    let currentRes = '1080p';
+
+    function updateMeta() {
+      const dims = {
+        '9:16_1080p': '1080×1920',
+        '9:16_720p': '720×1280',
+        '4:5_1080p': '1080×1350',
+        '4:5_720p': '720×900'
+      }[`${currentRatio}_${currentRes}`] || '1080×1920';
+      document.getElementById('metaRatio').textContent = `${currentRatio} • ${dims}`;
+    }
+
+    function setRatio(ratio, el) {
+      currentRatio = ratio;
+      document.querySelectorAll('[data-ratio]').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      const frame = document.getElementById('previewFrame');
+      frame.classList.toggle('ratio-4-5', ratio === '4:5');
+      updateMeta();
+    }
+
+    function setRes(res, el) {
+      currentRes = res;
+      document.querySelectorAll('[data-res]').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      updateMeta();
+    }
+
+    function setTransition(mode, label, el) {
+      document.querySelectorAll('[data-trans]').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      const frame = document.getElementById('previewFrame');
+      frame.classList.remove('anim-fade', 'anim-slide', 'anim-dissolve');
+      if (mode === 'fade') frame.classList.add('anim-fade');
+      if (mode === 'slide') frame.classList.add('anim-slide');
+      if (mode === 'dissolve') frame.classList.add('anim-dissolve');
+      document.getElementById('metaTrans').textContent = mode === 'none' ? 'Cut Langsung' : `${label} 600ms`;
+    }
+
+    function launchWithUrl() {
+      const input = document.getElementById('videoUrlInput').value.trim();
+      const status = document.getElementById('webStatus');
+      if (!input) {
+        status.innerHTML = '⚠️ Tempel URL video YouTube, TikTok, IG, atau link .mp4 terlebih dahulu.';
+        return;
+      }
+      const deepLink = 'aldiaiclipper://open?url=' + encodeURIComponent(input);
+      status.innerHTML = `✅ URL siap dikirim ke Aldi AI Clipper Android (${currentRatio} ${currentRes}). Membuka aplikasi…`;
+      window.location.href = deepLink;
+    }
+  </script>
+</body>
+</html>

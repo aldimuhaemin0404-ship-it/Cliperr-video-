@@ -32,6 +32,7 @@ import com.example.domain.model.StudioImportSource
 import com.example.domain.model.TargetPlatform
 import com.example.domain.model.VideoFilterPreset
 import com.example.domain.model.VideoMetadata
+import com.example.domain.model.VideoTransitionStyle
 import com.example.media.AudioMoodAnalyzer
 import com.example.media.RoyaltyFreeMusicCatalog
 import com.example.media.SocialShareHelper
@@ -570,6 +571,64 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun prepareManualClipForExportSettings(onReady: (Long) -> Unit) {
+        val current = _studioState.value
+        val video = current.selectedVideo ?: return
+        if (!video.hasPlayableStream) {
+            _statusBannerMessage.value = "Tautkan file video lokal atau URL stream video langsung untuk memilih rasio & ekspor."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val cleanTopic = current.focusTopic.trim().ifEmpty { video.title }
+                val project = ClipProject(
+                    title = video.title,
+                    sourceUri = video.uriString,
+                    durationMs = video.durationMs,
+                    width = video.width,
+                    height = video.height,
+                    targetPlatform = current.selectedPlatform,
+                    focusTopic = current.focusTopic,
+                    sourcePlatformName = video.sourcePlatform?.displayName,
+                    authorName = video.authorName,
+                    thumbnailUrl = video.thumbnailUrl,
+                    hasPlayableStream = true,
+                    isPlaceholderAi = false
+                )
+                val manualSegment = ClipSegment(
+                    projectId = 0L,
+                    title = "Klip Pilihan (${video.title.take(18)})",
+                    hookLine = "Sorotan pilihan dari $cleanTopic",
+                    viralScore = 90,
+                    rationale = "Rentang waktu dipilih langsung melalui slider timeline Studio.",
+                    captionText = "Klip pilihan dari ${video.title} untuk ${current.selectedPlatform.displayName}.",
+                    hashtags = "#AIClipper #ClipManual #Shorts",
+                    startMs = current.trimStartMs,
+                    endMs = current.trimEndMs,
+                    aspectRatio = current.selectedPlatform.defaultRatio,
+                    tone = CaptionTone.ENERGETIC,
+                    videoFilter = current.selectedFilter,
+                    brightness = current.brightness,
+                    showSubtitles = true,
+                    isPlaceholderAi = false
+                )
+                val savedProjectId = projectRepository.saveProjectWithSegments(project) { projId ->
+                    listOf(manualSegment.copy(projectId = projId))
+                }
+                val persistedSegment = projectRepository.getSegmentsForProject(savedProjectId).firstOrNull()
+                    ?: manualSegment.copy(projectId = savedProjectId)
+                _selectedProjectId.value = savedProjectId
+                loadSegmentForEditor(persistedSegment.id)
+                onReady(persistedSegment.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to prepare manual clip for export settings", e)
+                _statusBannerMessage.value = "Gagal menyiapkan pengaturan ekspor: ${e.localizedMessage}"
+            }
+        }
+    }
+
     fun analyzeSelectedVideo(onSuccess: () -> Unit) {
         val current = _studioState.value
         val video = current.selectedVideo ?: return
@@ -834,6 +893,20 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
         _editorState.update { state ->
             val seg = state.segment ?: return@update state
             state.copy(segment = seg.copy(musicVolume = volume.coerceIn(0.05f, 1.0f)))
+        }
+    }
+
+    fun updateEditorTransitionStyle(style: VideoTransitionStyle) {
+        _editorState.update { state ->
+            val seg = state.segment ?: return@update state
+            state.copy(segment = seg.copy(transitionStyle = style))
+        }
+    }
+
+    fun updateEditorTransitionDuration(durationMs: Long) {
+        _editorState.update { state ->
+            val seg = state.segment ?: return@update state
+            state.copy(segment = seg.copy(transitionDurationMs = durationMs.coerceIn(250L, 1_500L)))
         }
     }
 
@@ -1236,6 +1309,93 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                 Log.e(TAG, "Export failed", e)
                 _exportProgress.value = ExportProgressState.Error(
                     e.localizedMessage ?: "Gagal mengekspor klip MP4."
+                )
+            } finally {
+                activeTransformer = null
+            }
+        }
+    }
+
+    fun exportCombinedProjectWithTransitions(projectId: Long) {
+        if (_exportProgress.value is ExportProgressState.Exporting) return
+
+        activeExportJob = viewModelScope.launch {
+            try {
+                val project = projectRepository.getProject(projectId)
+                    ?: throw IllegalStateException("Proyek tidak ditemukan.")
+                if (!project.hasPlayableStream) {
+                    _exportProgress.value = ExportProgressState.Error(
+                        "Tautkan file video lokal terlebih dahulu sebelum menggabungkan semua klip."
+                    )
+                    return@launch
+                }
+
+                // Persist any unsaved transition/editor changes on the active segment first
+                _editorState.value.segment?.let { activeSeg ->
+                    if (activeSeg.projectId == projectId) {
+                        projectRepository.updateSegment(activeSeg)
+                    }
+                }
+
+                val projectSegments = projectRepository.getSegmentsForProject(projectId)
+                    .sortedBy { it.startMs }
+                if (projectSegments.isEmpty()) {
+                    _exportProgress.value = ExportProgressState.Error("Belum ada klip dalam proyek ini.")
+                    return@launch
+                }
+
+                val activeEditorSeg = _editorState.value.segment?.takeIf { it.projectId == projectId }
+                val effectiveSegments = if (activeEditorSeg != null) {
+                    projectSegments.map { seg ->
+                        seg.copy(
+                            aspectRatio = activeEditorSeg.aspectRatio,
+                            exportQuality = activeEditorSeg.exportQuality,
+                            transitionStyle = activeEditorSeg.transitionStyle,
+                            transitionDurationMs = activeEditorSeg.transitionDurationMs,
+                            selectedMusicTrackId = activeEditorSeg.selectedMusicTrackId ?: seg.selectedMusicTrackId,
+                            selectedMusicTitle = activeEditorSeg.selectedMusicTitle ?: seg.selectedMusicTitle,
+                            selectedMusicUrl = activeEditorSeg.selectedMusicUrl ?: seg.selectedMusicUrl,
+                            musicVolume = activeEditorSeg.musicVolume
+                        )
+                    }
+                } else {
+                    projectSegments
+                }
+
+                val title = "${project.title} (Kompilasi)"
+                _exportProgress.value = ExportProgressState.Exporting(
+                    segmentId = effectiveSegments.first().id,
+                    clipTitle = title,
+                    progressPercent = 0
+                )
+
+                val exported = mediaProcessor.exportCombinedClipsWithTransitions(
+                    sourceUri = Uri.parse(project.sourceUri),
+                    projectTitle = project.title,
+                    segments = effectiveSegments,
+                    onProgress = { pct ->
+                        _exportProgress.value = ExportProgressState.Exporting(
+                            segmentId = effectiveSegments.first().id,
+                            clipTitle = title,
+                            progressPercent = pct
+                        )
+                    },
+                    onTransformerCreated = { transformer ->
+                        activeTransformer = transformer
+                    }
+                )
+
+                val savedId = projectRepository.saveExportedClip(exported)
+                val finalClip = exported.copy(id = savedId)
+                _exportProgress.value = ExportProgressState.Completed(finalClip)
+                _statusBannerMessage.value = "Video gabungan ${effectiveSegments.size} klip dengan transisi ${effectiveSegments.first().transitionStyle.label} selesai!"
+            } catch (e: CancellationException) {
+                _exportProgress.value = ExportProgressState.Idle
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Combined export failed", e)
+                _exportProgress.value = ExportProgressState.Error(
+                    e.localizedMessage ?: "Gagal menggabungkan klip dengan transisi."
                 )
             } finally {
                 activeTransformer = null

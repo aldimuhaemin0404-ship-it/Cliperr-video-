@@ -14,6 +14,7 @@ import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.SubtitleCue
 import com.example.domain.model.TargetPlatform
 import com.example.domain.model.VideoFilterPreset
+import com.example.domain.model.VideoTransitionStyle
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -66,6 +67,8 @@ data class ClipSegmentEntity(
     val showIntroHook: Boolean = true,
     val hookDurationMs: Long = 3_000L,
     val hookOverlayStyleName: String = HookOverlayStyle.NEON_BADGE.name,
+    val transitionStyleName: String = VideoTransitionStyle.FADE.name,
+    val transitionDurationMs: Long = 600L,
     val includeAudio: Boolean = true,
     val selectedMusicTrackId: String? = null,
     val selectedMusicTitle: String? = null,
@@ -151,6 +154,9 @@ fun ClipSegmentEntity.toDomain(): ClipSegment = ClipSegment(
     hookDurationMs = hookDurationMs.coerceIn(1_500L, 5_000L),
     hookOverlayStyle = runCatching { HookOverlayStyle.valueOf(hookOverlayStyleName) }
         .getOrDefault(HookOverlayStyle.NEON_BADGE),
+    transitionStyle = runCatching { VideoTransitionStyle.valueOf(transitionStyleName) }
+        .getOrDefault(VideoTransitionStyle.FADE),
+    transitionDurationMs = transitionDurationMs.coerceIn(250L, 1_500L),
     includeAudio = includeAudio,
     selectedMusicTrackId = selectedMusicTrackId,
     selectedMusicTitle = selectedMusicTitle,
@@ -184,6 +190,8 @@ fun ClipSegment.toEntity(): ClipSegmentEntity = ClipSegmentEntity(
     showIntroHook = showIntroHook,
     hookDurationMs = hookDurationMs.coerceIn(1_500L, 5_000L),
     hookOverlayStyleName = hookOverlayStyle.name,
+    transitionStyleName = transitionStyle.name,
+    transitionDurationMs = transitionDurationMs.coerceIn(250L, 1_500L),
     includeAudio = includeAudio,
     selectedMusicTrackId = selectedMusicTrackId,
     selectedMusicTitle = selectedMusicTitle,

@@ -193,4 +193,12 @@
     <string name="editor_hook_3s_generating">Menganalisis frame pembuka 3 detik…</string>
     <string name="editor_hook_3s_duration_label">Durasi Tampil Hook</string>
     <string name="editor_hook_3s_style_label">Gaya Tampilan Overlay Hook</string>
+
+    <!-- Export Format & Transitions & Web -->
+    <string name="export_settings_vertical_badge">Vertikal 9:16 &amp; 4:5</string>
+    <string name="editor_transition_section_title">Gaya Transisi Antar Klip</string>
+    <string name="editor_transition_duration_label">Durasi Transisi</string>
+    <string name="editor_merge_clips_cta">Gabungkan Semua Klip Proyek + Transisi</string>
+    <string name="clips_merge_all_cta">Gabungkan Klip + Transisi</string>
+    <string name="home_open_web_studio">Versi Web</string>
 </resources>

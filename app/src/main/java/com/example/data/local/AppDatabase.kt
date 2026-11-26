@@ -11,7 +11,7 @@ import androidx.room.RoomDatabase
         ClipSegmentEntity::class,
         ExportedClipEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

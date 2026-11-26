@@ -40,8 +40,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun extractSharedText(intent: Intent?): String? {
-        if (intent?.action != Intent.ACTION_SEND) return null
-        if (intent.type != "text/plain") return null
-        return intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
+        if (intent == null) return null
+        if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            return intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
+        }
+        if (intent.action == Intent.ACTION_VIEW) {
+            val dataUri = intent.data ?: return null
+            val embeddedUrl = dataUri.getQueryParameter("url")
+            if (!embeddedUrl.isNullOrBlank()) return embeddedUrl
+            val scheme = dataUri.scheme?.lowercase()
+            if (scheme == "http" || scheme == "https") {
+                val urlStr = dataUri.toString()
+                if (!urlStr.contains("asia-northeast1.run.app")) {
+                    return urlStr
+                }
+            }
+        }
+        return null
     }
 }

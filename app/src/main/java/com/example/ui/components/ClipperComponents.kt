@@ -97,7 +97,9 @@ import com.example.domain.model.ExportProgressState
 import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.SubtitleCue
 import com.example.domain.model.VideoFilterPreset
+import com.example.domain.model.VideoTransitionStyle
 import com.example.media.VideoFilterEffects
+import com.example.media.VideoTransitionEffects
 import com.example.ui.theme.FuturisticCyan
 import com.example.ui.theme.MonoTimecodeStyle
 import com.example.ui.theme.NeonMagenta
@@ -406,12 +408,17 @@ fun VideoClipPlayerPreview(
     showIntroHook: Boolean = true,
     hookDurationMs: Long = 3_000L,
     hookOverlayStyle: HookOverlayStyle = HookOverlayStyle.NEON_BADGE,
+    transitionStyle: VideoTransitionStyle = VideoTransitionStyle.FADE,
+    transitionDurationMs: Long = 600L,
     selectedMusicTitle: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var isPlaying by remember { mutableStateOf(false) }
     var currentPosMs by remember { mutableStateOf(0L) }
+    val clipDurationMs = remember(startMs, endMs) {
+        ((endMs ?: 10_000L) - startMs).coerceAtLeast(1_500L)
+    }
 
     val exoPlayer = remember(videoUri) {
         ExoPlayer.Builder(context).build().apply {
@@ -421,7 +428,9 @@ fun VideoClipPlayerPreview(
     }
 
     LaunchedEffect(videoUri, startMs, endMs) {
-        exoPlayer.setVideoEffects(VideoFilterEffects.buildEffects(videoFilter, brightness))
+        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness) +
+            VideoTransitionEffects.buildEffects(transitionStyle, transitionDurationMs, clipDurationMs)
+        exoPlayer.setVideoEffects(effects)
         val builder = MediaItem.Builder().setUri(videoUri)
         if (endMs != null && endMs > startMs + 500L) {
             builder.setClippingConfiguration(
@@ -435,8 +444,10 @@ fun VideoClipPlayerPreview(
         exoPlayer.prepare()
     }
 
-    LaunchedEffect(exoPlayer, videoFilter, brightness) {
-        exoPlayer.setVideoEffects(VideoFilterEffects.buildEffects(videoFilter, brightness))
+    LaunchedEffect(exoPlayer, videoFilter, brightness, transitionStyle, transitionDurationMs, clipDurationMs) {
+        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness) +
+            VideoTransitionEffects.buildEffects(transitionStyle, transitionDurationMs, clipDurationMs)
+        exoPlayer.setVideoEffects(effects)
     }
 
     LaunchedEffect(exoPlayer) {
@@ -529,20 +540,38 @@ fun VideoClipPlayerPreview(
                 }
             }
 
-            // Top-right aspect ratio badge
-            Surface(
+            // Top-right aspect ratio & active transition badges
+            Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(10.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = Color.Black.copy(alpha = 0.65f)
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = aspectRatio.label,
-                    style = MonoTimecodeStyle,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.Black.copy(alpha = 0.65f)
+                ) {
+                    Text(
+                        text = aspectRatio.label,
+                        style = MonoTimecodeStyle,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                if (transitionStyle != VideoTransitionStyle.NONE) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.Black.copy(alpha = 0.65f)
+                    ) {
+                        Text(
+                            text = "${transitionStyle.label} ${transitionDurationMs}ms",
+                            style = MonoTimecodeStyle,
+                            color = FuturisticCyan,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
             }
 
             // Center Play/Pause pill

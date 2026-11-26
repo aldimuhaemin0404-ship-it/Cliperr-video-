@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -92,6 +93,7 @@ fun ProjectsScreen(
     onExportSegment: (ClipSegment) -> Unit,
     onToggleFavorite: (ClipSegment) -> Unit,
     onBookmarkAllFavorites: () -> Unit,
+    onMergeAllWithTransitions: () -> Unit = {},
     onGoToStudio: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -337,6 +339,31 @@ fun ProjectsScreen(
                                     text = stringResource(R.string.clips_save_favorite),
                                     color = Color.White
                                 )
+                            }
+
+                            if (segments.size >= 2 && selectedProject?.hasPlayableStream == true) {
+                                OutlinedButton(
+                                    onClick = onMergeAllWithTransitions,
+                                    enabled = !isExporting,
+                                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(50.dp)
+                                        .testTag("merge_all_clips_transitions_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.MergeType,
+                                        contentDescription = null,
+                                        tint = FuturisticCyan,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.clips_merge_all_cta),
+                                        color = FuturisticCyan
+                                    )
+                                }
                             }
                         }
                     }
