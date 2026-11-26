@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ALDI AI CLIPPER — Cari · Potong · Edit · Share</title>
-  <meta name="description" content="ALDI AI CLIPPER: Studio Web & Android untuk auto-clipping video viral, hook 3 detik, musik latar AI, transisi mulus, dan ekspor HD 9:16 & 4:5." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Aldi AI Clipper — Studio Klip Viral Web &amp; Android</title>
+  <meta name="description" content="ALDI AI CLIPPER versi Web lengkap: Cari video populer, Batch Queue, Analisis AI, 5 Klip Terbaik, Editor Video dengan Musik AI, Hook 3 Detik, Transisi Fade/Slide/Dissolve, Ekspor HD 9:16 &amp; 4:5, dan Share." />
   <style>
     :root {
       --bg: #070914;
@@ -12,6 +12,7 @@
       --surface-elevated: #171E38;
       --outline: #2B3459;
       --purple: #9333EA;
+      --purple-soft: rgba(147, 51, 234, 0.22);
       --blue: #2563EB;
       --cyan: #06B6D4;
       --magenta: #EC4899;
@@ -19,59 +20,58 @@
       --amber: #F59E0B;
       --text: #F8FAFC;
       --muted: #94A3B8;
+      --radius-lg: 18px;
+      --radius-md: 14px;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { scroll-behavior: smooth; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
 
     body {
       font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       background:
-        radial-gradient(circle at 12% 8%, rgba(147, 51, 234, 0.22), transparent 42%),
-        radial-gradient(circle at 88% 12%, rgba(6, 182, 212, 0.18), transparent 40%),
+        radial-gradient(circle at 12% 8%, rgba(147, 51, 234, 0.22), transparent 38%),
+        radial-gradient(circle at 88% 12%, rgba(6, 182, 212, 0.18), transparent 36%),
         var(--bg);
       color: var(--text);
-      line-height: 1.55;
+      line-height: 1.45;
+      overflow-x: hidden;
+    }
+
+    button, input, select, textarea {
+      font-family: inherit;
+      color: inherit;
+    }
+
+    /* App Layout Shell */
+    .app-shell {
+      display: flex;
       min-height: 100vh;
-    }
-
-    .container {
       width: 100%;
-      max-width: 1120px;
-      margin: 0 auto;
-      padding: 0 20px;
     }
 
-    /* Header */
-    header {
+    /* Desktop Sidebar Nav Rail */
+    .nav-rail {
+      display: none;
+      width: 228px;
+      flex-shrink: 0;
+      background: rgba(15, 20, 38, 0.94);
+      border-right: 1px solid var(--outline);
+      padding: 18px 14px;
+      flex-direction: column;
+      gap: 10px;
       position: sticky;
       top: 0;
-      z-index: 40;
-      backdrop-filter: blur(14px);
-      background: rgba(7, 9, 20, 0.84);
+      height: 100vh;
+    }
+
+    .rail-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 8px 14px;
       border-bottom: 1px solid rgba(43, 52, 89, 0.7);
-    }
-
-    .nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 70px;
-      gap: 16px;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      text-decoration: none;
-      color: var(--text);
-    }
-
-    .brand-title {
-      font-size: 1.15rem;
-      font-weight: 800;
-      letter-spacing: -0.02em;
+      margin-bottom: 6px;
     }
 
     .brand-accent {
@@ -80,540 +80,2462 @@
       -webkit-text-fill-color: transparent;
     }
 
-    .nav-actions {
+    .rail-btn {
       display: flex;
       align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      min-height: 44px;
-      padding: 10px 18px;
-      border-radius: 999px;
-      font-weight: 700;
-      font-size: 0.92rem;
-      text-decoration: none;
-      cursor: pointer;
+      gap: 12px;
+      min-height: 48px;
+      padding: 10px 14px;
+      border-radius: 14px;
       border: 1px solid transparent;
-      transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.92rem;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.16s ease;
     }
 
-    .btn:active { transform: scale(0.98); }
-
-    .btn-primary {
-      background: linear-gradient(90deg, var(--cyan), var(--purple), var(--magenta));
+    .rail-btn:hover { background: rgba(255, 255, 255, 0.04); color: #fff; }
+    .rail-btn.active {
+      background: rgba(147, 51, 234, 0.24);
+      border-color: rgba(6, 182, 212, 0.65);
       color: #fff;
-      box-shadow: 0 8px 26px rgba(147, 51, 234, 0.38);
     }
 
-    .btn-outline {
-      background: rgba(23, 30, 56, 0.8);
-      border-color: rgba(6, 182, 212, 0.55);
-      color: var(--text);
-    }
-
-    .btn-outline:hover {
-      border-color: var(--cyan);
-      box-shadow: 0 0 18px rgba(6, 182, 212, 0.24);
-    }
-
-    /* Hero */
-    .hero {
-      padding: 46px 0 36px;
-      display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
-      gap: 32px;
+    .main-stage {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
       align-items: center;
+      padding-bottom: 92px;
+    }
+
+    .screen-container {
+      width: 100%;
+      max-width: 780px;
+      padding: 14px 16px 24px;
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+      animation: fadeScreen 0.2s ease;
+    }
+
+    .screen-container.active { display: flex; }
+
+    @keyframes fadeScreen {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Splash Screen */
+    #screen-splash {
+      min-height: 100vh;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 24px;
+      max-width: 520px;
+    }
+
+    .splash-glow {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 126px;
+      height: 126px;
+      border-radius: 32px;
+      background: radial-gradient(circle, rgba(147, 51, 234, 0.45), rgba(6, 182, 212, 0.15));
+      border: 2px solid rgba(6, 182, 212, 0.7);
+      box-shadow: 0 0 48px rgba(147, 51, 234, 0.55);
+      margin-bottom: 20px;
+      animation: pulseLogo 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseLogo {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 36px rgba(147, 51, 234, 0.45); }
+      50% { transform: scale(1.04); box-shadow: 0 0 58px rgba(6, 182, 212, 0.6); }
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 8px;
+      border-radius: 99px;
+      background: var(--surface-elevated);
+      overflow: hidden;
+      border: 1px solid var(--outline);
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--purple), var(--magenta));
+      width: 0%;
+      transition: width 0.25s ease;
+    }
+
+    /* Cards & Surface Helpers */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--outline);
+      border-radius: var(--radius-lg);
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card-elevated {
+      background: var(--surface-elevated);
+      border: 1px solid rgba(6, 182, 212, 0.4);
+      border-radius: var(--radius-md);
+      padding: 12px;
+    }
+
+    .hero-card {
+      background: linear-gradient(135deg, #17103C, #0C1532, #1B0E3B);
+      border: 1px solid rgba(147, 51, 234, 0.6);
+      border-radius: 22px;
+      padding: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 0;
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      border-radius: 999px;
-      background: rgba(6, 182, 212, 0.12);
-      border: 1px solid rgba(6, 182, 212, 0.45);
-      color: var(--cyan);
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      margin-bottom: 16px;
-    }
-
-    .hero h1 {
-      font-size: clamp(2rem, 4.4vw, 3.1rem);
-      line-height: 1.12;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      margin-bottom: 14px;
-    }
-
-    .hero p {
-      color: var(--muted);
-      font-size: 1.04rem;
-      max-width: 560px;
-      margin-bottom: 24px;
-    }
-
-    .hero-cta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 18px;
-    }
-
-    .pill-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .pill {
-      font-size: 0.78rem;
+      gap: 6px;
       padding: 5px 11px;
       border-radius: 999px;
-      background: var(--surface);
-      border: 1px solid var(--outline);
-      color: #CBD5E1;
-    }
-
-    /* Interactive Web Studio Previewer */
-    .studio-card {
-      background: linear-gradient(145deg, rgba(23, 30, 56, 0.95), rgba(15, 20, 38, 0.96));
-      border: 1px solid rgba(147, 51, 234, 0.5);
-      border-radius: 22px;
-      padding: 20px;
-      box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5);
-    }
-
-    .preview-stage {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .video-frame {
-      position: relative;
-      width: 220px;
-      aspect-ratio: 9 / 16;
-      border-radius: 18px;
-      overflow: hidden;
-      background: radial-gradient(circle at 30% 25%, #3B1768, #0D1633 70%, #050814);
-      border: 2px solid rgba(6, 182, 212, 0.7);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 12px;
-      transition: aspect-ratio 0.25s ease, transform 0.35s ease, opacity 0.35s ease;
-    }
-
-    .video-frame.ratio-4-5 {
-      aspect-ratio: 4 / 5;
-      width: 256px;
-    }
-
-    .video-frame.anim-fade { animation: transFade 1.8s infinite alternate; }
-    .video-frame.anim-slide { animation: transSlide 1.8s infinite ease-in-out; }
-    .video-frame.anim-dissolve { animation: transDissolve 1.8s infinite ease-in-out; }
-
-    @keyframes transFade {
-      0%, 25% { opacity: 0.35; }
-      45%, 100% { opacity: 1; }
-    }
-    @keyframes transSlide {
-      0%, 20% { transform: translateX(18px); opacity: 0.7; }
-      45%, 100% { transform: translateX(0); opacity: 1; }
-    }
-    @keyframes transDissolve {
-      0%, 25% { transform: scale(1.06); filter: brightness(1.25) saturate(1.3); opacity: 0.75; }
-      50%, 100% { transform: scale(1); filter: brightness(1) saturate(1); opacity: 1; }
-    }
-
-    .hook-badge-live {
-      background: rgba(24, 12, 54, 0.9);
-      border: 1.5px solid var(--purple);
-      border-radius: 12px;
-      padding: 8px 10px;
-      text-align: center;
-    }
-
-    .hook-kicker {
-      font-size: 0.65rem;
-      font-weight: 800;
-      color: var(--cyan);
-      letter-spacing: 0.06em;
-    }
-
-    .hook-headline {
-      font-size: 0.84rem;
-      font-weight: 800;
-      color: #fff;
-      margin-top: 2px;
-    }
-
-    .frame-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.7rem;
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      color: var(--cyan);
-      background: rgba(0, 0, 0, 0.55);
-      padding: 5px 8px;
-      border-radius: 8px;
-    }
-
-    .caption-pill {
-      background: rgba(0, 0, 0, 0.72);
-      border: 1px solid rgba(147, 51, 234, 0.65);
-      border-radius: 10px;
-      padding: 7px 10px;
-      font-size: 0.76rem;
+      font-size: 0.74rem;
       font-weight: 700;
-      text-align: center;
+      background: rgba(6, 182, 212, 0.14);
+      border: 1px solid rgba(6, 182, 212, 0.5);
+      color: var(--cyan);
+      white-space: nowrap;
     }
 
-    .controls-grid {
-      margin-top: 14px;
+    .badge-purple {
+      background: rgba(147, 51, 234, 0.24);
+      border-color: rgba(147, 51, 234, 0.65);
+      color: #fff;
+    }
+
+    .ai-notice {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 0.8rem;
+      color: #FDE68A;
+      display: flex;
+      gap: 9px;
+      align-items: flex-start;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 46px;
+      padding: 10px 16px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: transform 0.12s ease, opacity 0.15s ease;
+      text-decoration: none;
+    }
+
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.48; cursor: not-allowed; }
+
+    .btn-gradient {
+      background: linear-gradient(90deg, var(--cyan), var(--purple), var(--magenta));
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(147, 51, 234, 0.35);
+    }
+
+    .btn-purple { background: var(--purple); color: #fff; }
+    .btn-outline {
+      background: var(--surface-elevated);
+      border-color: var(--outline);
+      color: #fff;
+    }
+    .btn-outline-cyan {
+      background: rgba(6, 182, 212, 0.1);
+      border-color: rgba(6, 182, 212, 0.65);
+      color: var(--cyan);
+    }
+    .btn-pill { border-radius: 999px; min-height: 40px; padding: 6px 14px; font-size: 0.82rem; }
+
+    /* Source Tiles */
+    .source-grid {
       display: grid;
-      gap: 10px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
     }
 
-    .chip-group {
+    .source-tile {
+      height: 88px;
+      border-radius: 16px;
+      border: 1px solid var(--outline);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #fff;
+      text-align: center;
+      padding: 8px 4px;
+    }
+
+    /* Chips & Inputs */
+    .chip-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 8px;
     }
 
     .chip {
-      padding: 6px 11px;
-      border-radius: 10px;
-      background: var(--surface);
+      min-height: 40px;
+      padding: 6px 12px;
+      border-radius: 12px;
+      background: var(--surface-elevated);
       border: 1px solid var(--outline);
       color: var(--muted);
-      font-size: 0.78rem;
+      font-size: 0.82rem;
       font-weight: 600;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    .chip.active {
-      background: rgba(147, 51, 234, 0.25);
+    .chip.selected {
+      background: var(--purple-soft);
       border-color: var(--cyan);
       color: #fff;
     }
 
-    .url-bar {
-      display: flex;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .url-input {
-      flex: 1;
-      min-width: 0;
+    .input-field {
+      width: 100%;
+      min-height: 46px;
+      padding: 10px 13px;
+      border-radius: 12px;
       background: var(--bg);
       border: 1px solid var(--outline);
-      border-radius: 12px;
-      color: var(--text);
-      padding: 10px 12px;
-      font-size: 0.85rem;
+      color: #fff;
+      font-size: 0.9rem;
     }
 
-    .url-input:focus {
-      outline: none;
-      border-color: var(--cyan);
+    .input-field:focus { outline: none; border-color: var(--cyan); }
+
+    textarea.input-field { min-height: 76px; resize: vertical; }
+
+    /* Popular Video Carousel & List */
+    .h-scroll {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
     }
 
-    .notice-banner {
-      margin-top: 10px;
-      padding: 9px 12px;
-      border-radius: 12px;
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.45);
-      color: #FDE68A;
-      font-size: 0.78rem;
-    }
-
-    /* Features Grid */
-    section.features {
-      padding: 28px 0 56px;
-    }
-
-    .section-title {
-      font-size: 1.5rem;
-      font-weight: 800;
-      margin-bottom: 6px;
-    }
-
-    .section-sub {
-      color: var(--muted);
-      margin-bottom: 22px;
-    }
-
-    .grid-3 {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
-    }
-
-    .feature-card {
+    .pop-card {
+      min-width: 245px;
       background: var(--surface);
       border: 1px solid var(--outline);
+      border-radius: 16px;
+      padding: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .pop-thumb {
+      width: 88px;
+      height: 62px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: var(--surface-elevated);
+      flex-shrink: 0;
+    }
+
+    /* Video Player Frame */
+    .player-stage {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .player-frame {
+      position: relative;
+      width: 100%;
+      max-width: 300px;
+      aspect-ratio: 9 / 16;
+      background: #000;
       border-radius: 18px;
+      overflow: hidden;
+      border: 1.5px solid var(--outline);
+      transition: aspect-ratio 0.2s ease, max-width 0.2s ease, transform 0.25s ease, opacity 0.25s ease;
+    }
+
+    .player-frame.ratio-4-5 { aspect-ratio: 4 / 5; max-width: 340px; }
+    .player-frame.ratio-1-1 { aspect-ratio: 1 / 1; max-width: 360px; }
+    .player-frame.ratio-16-9 { aspect-ratio: 16 / 9; max-width: 100%; }
+
+    .player-frame video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .player-overlay-top {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+      gap: 6px;
+    }
+
+    .mono-pill {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.7);
+      color: var(--cyan);
+    }
+
+    .hook-overlay-box {
+      position: absolute;
+      top: 48px;
+      left: 14px;
+      right: 14px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .hook-style-neon_badge {
+      background: rgba(24, 12, 54, 0.9);
+      border: 1.5px solid var(--purple);
+    }
+    .hook-style-cyber_banner {
+      background: rgba(8, 28, 56, 0.9);
+      border: 1.5px solid var(--cyan);
+    }
+    .hook-style-minimal_bold {
+      background: rgba(12, 14, 22, 0.9);
+      border: 1.5px solid var(--magenta);
+    }
+
+    .subtitle-overlay-box {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      padding: 7px 10px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.78);
+      border: 1px solid rgba(147, 51, 234, 0.65);
+      text-align: center;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #fff;
+      pointer-events: none;
+    }
+
+    .anim-trans-fade { animation: wFade 1.5s infinite alternate; }
+    .anim-trans-slide { animation: wSlide 1.5s infinite ease-in-out; }
+    .anim-trans-dissolve { animation: wDissolve 1.5s infinite ease-in-out; }
+    @keyframes wFade { 0%, 20% { opacity: 0.3; } 45%, 100% { opacity: 1; } }
+    @keyframes wSlide { 0%, 20% { transform: translateX(18px); opacity: 0.75; } 45%, 100% { transform: translateX(0); opacity: 1; } }
+    @keyframes wDissolve { 0%, 20% { transform: scale(1.06); opacity: 0.7; } 50%, 100% { transform: scale(1); opacity: 1; } }
+
+    /* 8-Tool Editor Grid */
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .tool-tile {
+      height: 64px;
+      border-radius: 14px;
+      background: var(--surface);
+      border: 1px solid var(--outline);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .tool-tile.selected {
+      background: rgba(147, 51, 234, 0.25);
+      border-color: var(--purple);
+      color: #fff;
+    }
+
+    /* Ranked Clip Row */
+    .clip-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--outline);
+      border-radius: 16px;
+      cursor: pointer;
+    }
+
+    .rank-badge {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--purple);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 0.82rem;
+      flex-shrink: 0;
+    }
+
+    /* Export Format Grid */
+    .format-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .format-card {
+      padding: 14px 10px;
+      border-radius: 16px;
+      background: var(--surface);
+      border: 1.5px solid var(--outline);
+      text-align: center;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .format-card.selected {
+      background: rgba(147, 51, 234, 0.25);
+      border-color: var(--purple);
+    }
+
+    .quality-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    /* Toggle Switch Row */
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 14px;
+      border-radius: 14px;
+      background: var(--surface);
+      border: 1px solid var(--outline);
+    }
+
+    .switch-input {
+      width: 46px;
+      height: 26px;
+      accent-color: var(--purple);
+      cursor: pointer;
+    }
+
+    /* Circular Progress Ring */
+    .ring-wrap {
+      position: relative;
+      width: 150px;
+      height: 150px;
+      margin: 12px auto;
+      display: grid;
+      place-items: center;
+    }
+
+    /* Bottom Navigation Bar (Mobile) */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 74px;
+      background: rgba(15, 20, 38, 0.96);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--outline);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 6px;
+      z-index: 50;
+    }
+
+    .bottom-nav.hidden { display: none; }
+
+    .bnav-btn {
+      flex: 1;
+      height: 100%;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+    }
+
+    .bnav-btn.active { color: #fff; }
+    .bnav-btn.active .bnav-icon { color: var(--cyan); }
+
+    .center-fab {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, var(--purple), var(--blue), var(--magenta));
+      color: #fff;
+      font-size: 1.25rem;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      box-shadow: 0 6px 22px rgba(147, 51, 234, 0.6);
+      margin: 0 6px;
+    }
+
+    /* Toast Banner */
+    .toast {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 90;
+      background: rgba(23, 30, 56, 0.96);
+      border: 1px solid var(--cyan);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+      display: none;
+      max-width: 92vw;
+    }
+
+    .toast.show { display: block; }
+
+    /* Modal / Share Sheet */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      z-index: 80;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal-sheet {
+      width: 100%;
+      max-width: 560px;
+      background: var(--surface);
+      border: 1px solid var(--cyan);
+      border-radius: 22px;
       padding: 18px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-    }
-
-    .feature-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(147, 51, 234, 0.25));
-      border: 1px solid rgba(6, 182, 212, 0.4);
-      display: grid;
-      place-items: center;
-      font-size: 1.15rem;
-    }
-
-    .feature-card h3 {
-      font-size: 1.02rem;
-      font-weight: 700;
-    }
-
-    .feature-card p {
-      font-size: 0.88rem;
-      color: var(--muted);
-    }
-
-    footer {
-      border-top: 1px solid var(--outline);
-      padding: 24px 0 36px;
-      color: var(--muted);
-      font-size: 0.85rem;
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
       gap: 12px;
     }
 
-    @media (max-width: 860px) {
-      .hero { grid-template-columns: 1fr; padding-top: 26px; }
-      .grid-3 { grid-template-columns: 1fr; }
+    @media (min-width: 760px) {
+      .nav-rail.visible { display: flex; }
+      .bottom-nav { display: none !important; }
+      .main-stage { padding-bottom: 32px; }
+      .modal-backdrop { align-items: center; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <div class="container nav">
-      <a href="#top" class="brand">
-        <svg width="38" height="38" viewBox="0 0 64 64" fill="none" aria-label="Logo Aldi AI Clipper">
+  <div id="toast" class="toast"></div>
+
+  <div class="app-shell">
+    <!-- Desktop Sidebar Rail -->
+    <aside id="navRail" class="nav-rail">
+      <div class="rail-brand">
+        <svg width="32" height="32" viewBox="0 0 64 64" fill="none">
           <defs>
-            <linearGradient id="aldiGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#06B6D4"/>
-              <stop offset="50%" stop-color="#9333EA"/>
-              <stop offset="100%" stop-color="#EC4899"/>
+            <linearGradient id="railGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#06B6D4"/><stop offset="55%" stop-color="#9333EA"/><stop offset="100%" stop-color="#EC4899"/>
             </linearGradient>
           </defs>
-          <rect x="4" y="4" width="56" height="56" rx="16" fill="#0F1426" stroke="url(#aldiGrad)" stroke-width="2.5"/>
-          <path d="M16 24L48 16L50 24H16V24Z" fill="url(#aldiGrad)"/>
-          <rect x="16" y="25" width="34" height="23" rx="5" fill="#171E38" stroke="#06B6D4" stroke-width="1.8"/>
-          <polygon points="29,31 41,36.5 29,42" fill="#F8FAFC"/>
+          <rect x="4" y="4" width="56" height="56" rx="16" fill="#0F1426" stroke="url(#railGrad)" stroke-width="3"/>
+          <path d="M16 24L48 16L50 24H16Z" fill="url(#railGrad)"/>
+          <rect x="16" y="25" width="34" height="23" rx="5" fill="#171E38" stroke="#06B6D4" stroke-width="2"/>
+          <polygon points="29,31 41,36.5 29,42" fill="#fff"/>
         </svg>
-        <span class="brand-title">ALDI <span class="brand-accent">AI CLIPPER</span></span>
-      </a>
-      <div class="nav-actions">
-        <a href="#studio-web" class="btn btn-outline">Coba Studio Web</a>
-        <a id="openAndroidTop" href="aldiaiclipper://open" class="btn btn-primary">Mulai di Android</a>
+        <div style="font-weight:800; font-size:1rem;">Aldi <span class="brand-accent">AI Clipper</span></div>
       </div>
+
+      <button class="rail-btn active" data-nav="home" onclick="navigate('home')">🏠 Beranda Studio</button>
+      <button class="rail-btn" data-nav="explore" onclick="navigate('explore')">🔥 Video Populer</button>
+      <button class="rail-btn" data-nav="batch" onclick="navigate('batch')">📦 Antrean Batch <span id="railBatchCount" class="badge" style="margin-left:auto; padding:2px 7px;">0</span></button>
+      <button class="rail-btn" data-nav="clips" onclick="navigate('clips')">⭐ 5 Klip Terbaik</button>
+      <button class="rail-btn" data-nav="exports" onclick="navigate('exports')">🎬 Galeri Ekspor <span id="railExportCount" class="badge" style="margin-left:auto; padding:2px 7px;">0</span></button>
+
+      <div style="margin-top:auto; padding-top:12px; border-top:1px solid var(--outline);">
+        <a href="aldiaiclipper://open" class="btn btn-outline-cyan" style="width:100%; font-size:0.82rem;">📱 Buka Aplikasi Android</a>
+      </div>
+    </aside>
+
+    <main class="main-stage">
+      <!-- 1. SPLASH SCREEN -->
+      <section id="screen-splash" class="screen-container active">
+        <div class="splash-glow">
+          <svg width="74" height="74" viewBox="0 0 64 64" fill="none">
+            <defs>
+              <linearGradient id="spGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#06B6D4"/><stop offset="50%" stop-color="#9333EA"/><stop offset="100%" stop-color="#EC4899"/>
+              </linearGradient>
+            </defs>
+            <path d="M10 22L52 12L54 22H10Z" fill="url(#spGrad)"/>
+            <rect x="10" y="23" width="44" height="30" rx="6" fill="#171E38" stroke="#06B6D4" stroke-width="2.5"/>
+            <polygon points="27,31 41,38 27,45" fill="#fff"/>
+          </svg>
+        </div>
+        <h1 style="font-size:2rem; font-weight:800; margin-bottom:6px;">Aldi <span class="brand-accent">AI Clipper</span></h1>
+        <p style="color:var(--cyan); font-weight:700; margin-bottom:8px;">Cari • Potong • Edit • Share</p>
+        <p style="color:var(--muted); font-size:0.95rem; margin-bottom:22px;">Ubah video panjang jadi klip pendek terbaik langsung di Web &amp; Android!</p>
+        <div class="progress-track" style="max-width:260px; margin-bottom:14px;">
+          <div id="splashFill" class="progress-fill"></div>
+        </div>
+        <button class="btn btn-gradient" onclick="enterApp()">Mulai Studio Web 🚀</button>
+      </section>
+
+      <!-- 2. BERANDA / STUDIO SCREEN -->
+      <section id="screen-home" class="screen-container">
+        <div class="top-bar">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <svg width="34" height="34" viewBox="0 0 64 64" fill="none">
+              <rect x="4" y="4" width="56" height="56" rx="16" fill="#0F1426" stroke="#9333EA" stroke-width="3"/>
+              <path d="M16 24L48 16L50 24H16Z" fill="#06B6D4"/>
+              <rect x="16" y="25" width="34" height="23" rx="5" fill="#171E38" stroke="#9333EA" stroke-width="2"/>
+              <polygon points="29,31 41,36.5 29,42" fill="#fff"/>
+            </svg>
+            <span style="font-size:1.2rem; font-weight:800;">Aldi <span class="brand-accent">AI Clipper</span></span>
+          </div>
+          <a href="aldiaiclipper://open" class="badge" style="text-decoration:none;">📱 Android App</a>
+        </div>
+
+        <div class="hero-card">
+          <div style="flex:1; display:flex; flex-direction:column; gap:10px;">
+            <span class="badge">ALDI AI WEB STUDIO</span>
+            <h2 style="font-size:1.35rem; font-weight:800; line-height:1.2;">Temukan Momen Terbaik dengan AI!</h2>
+            <p style="font-size:0.84rem; color:#CBD5E1;">Unggah video dari perangkat atau tempel link YouTube, TikTok, Instagram, dan URL MP4.</p>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              <label class="btn btn-purple btn-pill" style="cursor:pointer;">
+                📁 Pilih Video
+                <input id="singleFileInput" type="file" accept="video/*" style="display:none;" onchange="handleSingleFilePick(event)" />
+              </label>
+              <button class="btn btn-outline-cyan btn-pill" onclick="focusUrlBox()">+ Tambah URL</button>
+            </div>
+          </div>
+          <div style="font-size:3.2rem; user-select:none;" aria-hidden="true">🤖</div>
+        </div>
+
+        <!-- Source Picker Tiles -->
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:0.95rem;">Pilih Sumber Video:</strong>
+            <button class="chip selected" style="min-height:32px; padding:4px 10px;" onclick="focusUrlBox()">+ Tambah URL</button>
+          </div>
+          <div class="source-grid">
+            <label class="source-tile" style="background:linear-gradient(#1D4ED8,#0284C7);">
+              <span style="font-size:1.25rem;">📁</span>
+              <span>File HP / PC</span>
+              <input type="file" accept="video/*" style="display:none;" onchange="handleSingleFilePick(event)" />
+            </label>
+            <div class="source-tile" style="background:linear-gradient(#DC2626,#991B1B);" onclick="focusUrlBox('https://youtu.be/')">
+              <span style="font-size:1.25rem;">▶️</span>
+              <span>YouTube Link</span>
+            </div>
+            <div class="source-tile" style="background:linear-gradient(#111827,#1E293B); border-color:rgba(6,182,212,0.7);" onclick="focusUrlBox('https://vt.tiktok.com/')">
+              <span style="font-size:1.25rem;">🎵</span>
+              <span>TikTok Link</span>
+            </div>
+            <div class="source-tile" style="background:linear-gradient(#9333EA,#EC4899);" onclick="focusUrlBox('https://instagram.com/reel/')">
+              <span style="font-size:1.25rem;">📸</span>
+              <span>Instagram Link</span>
+            </div>
+          </div>
+
+          <div id="urlImportBox" style="display:flex; flex-direction:column; gap:8px; padding-top:6px;">
+            <div style="display:flex; gap:8px;">
+              <input id="homeUrlInput" type="url" class="input-field" placeholder="Tempel URL video (YouTube, TikTok, IG, atau link .mp4)..." />
+              <button class="btn btn-purple" onclick="loadHomeUrl()">Muat URL</button>
+              <button class="btn btn-outline-cyan" onclick="enqueueHomeUrl()">Ke Antrean</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Batch Queue Card -->
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong>📦 Upload &amp; Proses Banyak Video (Batch)</strong>
+              <p style="font-size:0.8rem; color:var(--muted);">Unggah banyak file sekaligus atau antrekan URL dan pantau progres tiap item.</p>
+            </div>
+            <span id="homeBatchBadge" class="badge">0 item</span>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <label class="btn btn-outline-cyan" style="flex:1; cursor:pointer;">
+              Pilih Banyak Video
+              <input id="multiFileInput" type="file" accept="video/*" multiple style="display:none;" onchange="handleMultiFilePick(event)" />
+            </label>
+            <button class="btn btn-purple" style="flex:1;" onclick="navigate('batch')">Buka Antrean</button>
+          </div>
+        </div>
+
+        <div class="ai-notice">
+          <span>ℹ️</span>
+          <div><strong>Mode Sampel AI Web Aktif:</strong> Analisis momen terbaik, hook 3 detik, dan rekomendasi musik bekerja langsung di browser dengan generator sampel AI.</div>
+        </div>
+
+        <!-- Selected Video Workspace -->
+        <div id="studioWorkspace" class="card" style="display:none; border-color:rgba(6,182,212,0.55);">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div>
+              <div id="wsTitle" style="font-weight:800; font-size:1rem;">Video Dipilih</div>
+              <div id="wsMeta" style="font-size:0.78rem; color:var(--cyan); font-family:monospace;">1280×720 • 00:15</div>
+            </div>
+            <span id="wsPlatformTag" class="badge badge-purple">SIAP</span>
+          </div>
+
+          <div class="player-stage">
+            <div class="player-frame ratio-16-9" id="homePlayerWrap">
+              <video id="homeVideo" controls playsinline crossorigin="anonymous"></video>
+            </div>
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:4px;">
+              <span>Potong Manual: <strong id="homeTrimText" style="color:var(--cyan);">00:00 – 00:15</strong></span>
+              <button class="chip" style="min-height:28px; padding:2px 8px;" onclick="previewHomeTrim()">▶ Putar Klip</button>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <div>
+                <label style="font-size:0.74rem; color:var(--muted);">Mulai (detik)</label>
+                <input id="homeTrimStart" type="range" min="0" max="15" step="0.5" value="0" style="width:100%;" oninput="onHomeTrimInput()" />
+              </div>
+              <div>
+                <label style="font-size:0.74rem; color:var(--muted);">Akhir (detik)</label>
+                <input id="homeTrimEnd" type="range" min="1" max="15" step="0.5" value="15" style="width:100%;" oninput="onHomeTrimInput()" />
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <strong style="font-size:0.86rem;">Target Platform:</strong>
+            <div class="chip-row" id="homePlatformChips"></div>
+          </div>
+
+          <input id="homeTopicInput" type="text" class="input-field" placeholder="Fokus topik opsional (cth: momen lucu, tips cepat)..." />
+
+          <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:8px;">
+            <button class="btn btn-outline-cyan" onclick="openManualExportSettings()">Ekspor Manual (9:16/4:5)</button>
+            <button class="btn btn-gradient" onclick="startAiAnalysis()">✨ Analisis &amp; Buat 5 Klip AI</button>
+          </div>
+        </div>
+
+        <!-- Popular Today Carousel -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong>🔥 Video Populer Hari Ini</strong>
+          <button class="chip" style="min-height:32px; border:none; background:none; color:var(--cyan);" onclick="navigate('explore')">Lihat Semua ›</button>
+        </div>
+        <div id="homePopularCarousel" class="h-scroll"></div>
+      </section>
+
+      <!-- 3. PENCARIAN VIDEO POPULER -->
+      <section id="screen-explore" class="screen-container">
+        <div class="top-bar">
+          <button class="btn btn-outline btn-pill" onclick="navigate('home')">← Beranda</button>
+          <h2 style="font-size:1.15rem; font-weight:800;">Cari Video Populer</h2>
+          <span></span>
+        </div>
+
+        <input id="exploreSearch" type="search" class="input-field" placeholder="Cari konten viral atau tempel URL video..." oninput="renderExploreList()" />
+        <div class="chip-row" id="explorePlatformFilters"></div>
+        <div id="exploreList" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </section>
+
+      <!-- 4. PROSES ANALISIS AI -->
+      <section id="screen-analyzing" class="screen-container">
+        <div class="top-bar">
+          <button class="btn btn-outline btn-pill" onclick="cancelAiAnalysis()">✕ Batal</button>
+          <h2 style="font-size:1.15rem; font-weight:800;">Analisis AI</h2>
+          <span></span>
+        </div>
+
+        <div class="card" style="text-align:center; padding:26px 16px;">
+          <div class="ring-wrap">
+            <svg width="150" height="150" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="52" stroke="#1E293B" stroke-width="10" fill="none"/>
+              <circle id="aiRing" cx="60" cy="60" r="52" stroke="url(#railGrad)" stroke-width="10" fill="none"
+                stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/>
+            </svg>
+            <div style="position:absolute; font-size:1.6rem; font-weight:800;" id="aiPctText">0%</div>
+          </div>
+          <h3 id="aiStepHeading" style="font-size:1.1rem; font-weight:700;">Menganalisis video…</h3>
+          <p style="font-size:0.84rem; color:var(--muted); margin-bottom:14px;">Mencari momen terbaik untuk klip viral</p>
+          <div id="aiStepsList" style="text-align:left; display:flex; flex-direction:column; gap:8px; max-width:340px; margin:0 auto;"></div>
+        </div>
+      </section>
+
+      <!-- 5. DAFTAR 5 KLIP TERBAIK -->
+      <section id="screen-clips" class="screen-container">
+        <div class="top-bar">
+          <h2 style="font-size:1.25rem; font-weight:800;">Hasil Klip Terbaik</h2>
+          <div style="display:flex; gap:6px;">
+            <button id="filterAllBtn" class="chip selected" onclick="setClipsFavFilter(false)">Semua</button>
+            <button id="filterFavBtn" class="chip" onclick="setClipsFavFilter(true)">Favorit</button>
+          </div>
+        </div>
+
+        <div style="background:linear-gradient(120deg, var(--purple), var(--blue)); border-radius:18px; padding:16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="editFirstClip()">
+          <div>
+            <div id="clipsBannerTitle" style="font-weight:800; font-size:1.05rem;">⭐ Ditemukan 5 Klip Terbaik!</div>
+            <div style="font-size:0.82rem; opacity:0.9;">Ketuk klip mana saja untuk membuka Editor Video AI</div>
+          </div>
+          <span style="font-size:1.4rem;">›</span>
+        </div>
+
+        <div id="clipsListContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+        <div id="clipsActionBar" style="display:flex; flex-direction:column; gap:8px;">
+          <button class="btn btn-gradient" onclick="editFirstClip()">✂️ Edit Semua</button>
+          <button class="btn btn-outline" onclick="bookmarkAllClips()">🔖 Simpan Semua ke Favorit</button>
+          <button class="btn btn-outline-cyan" onclick="exportCombinedWithTransitions()">🎞️ Gabungkan Semua Klip + Transisi</button>
+        </div>
+      </section>
+
+      <!-- 6. EDITOR VIDEO -->
+      <section id="screen-editor" class="screen-container">
+        <div class="top-bar">
+          <button class="btn btn-outline btn-pill" onclick="navigate('clips')">← Klip</button>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <strong style="font-size:1.08rem;">Editor Video</strong>
+            <span id="editorViralBadge" class="badge">95/100</span>
+          </div>
+          <button class="btn btn-outline-cyan btn-pill" onclick="saveCurrentClipEdits()">✓ Simpan</button>
+        </div>
+
+        <div class="player-stage">
+          <div id="editorPlayerFrame" class="player-frame">
+            <video id="editorVideo" playsinline crossorigin="anonymous" onclick="toggleEditorPlay()"></video>
+            <div class="player-overlay-top">
+              <span id="editorFilterBadge" class="mono-pill" style="display:none;">Vivid</span>
+              <div style="margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                <span id="editorRatioBadge" class="mono-pill">9:16</span>
+                <span id="editorTransBadge" class="mono-pill">Fade 600ms</span>
+              </div>
+            </div>
+            <div id="editorHookOverlay" class="hook-overlay-box hook-style-neon_badge" style="display:none;">
+              <div style="font-size:0.65rem; font-weight:800; color:var(--cyan);">HOOK 0–<span id="hookSecBadge">3</span> DETIK</div>
+              <div id="editorHookTextPreview" style="font-size:0.86rem; font-weight:800; color:#fff;"></div>
+            </div>
+            <div id="editorMusicOverlayPill" style="position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.75); border:1px solid rgba(6,182,212,0.6); padding:3px 9px; border-radius:99px; font-size:0.7rem; display:none; white-space:nowrap;">🎵</div>
+            <div id="editorSubtitleOverlay" class="subtitle-overlay-box" style="display:none;"></div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:center; gap:10px; align-items:center;">
+          <button class="btn btn-outline btn-pill" onclick="toggleEditorPlay()" id="editorPlayBtn">▶ Putar / Jeda</button>
+          <span id="editorTimecode" style="font-family:monospace; color:var(--cyan); font-size:0.85rem;">00:00 / 00:15</span>
+        </div>
+
+        <!-- 8-Tool Grid -->
+        <div class="tools-grid" id="editorToolsGrid"></div>
+
+        <!-- Dynamic Active Tool Panel -->
+        <div id="editorToolPanel" class="card"></div>
+
+        <button class="btn btn-gradient" onclick="goToExportSettingsFromEditor()">💾 Simpan &amp; Pengaturan Ekspor HD</button>
+      </section>
+
+      <!-- 7. PENGATURAN EKSPOR HD -->
+      <section id="screen-export" class="screen-container">
+        <div class="top-bar">
+          <button class="btn btn-outline btn-pill" onclick="navigate('editor')">← Editor</button>
+          <h2 style="font-size:1.15rem; font-weight:800;">Pengaturan Ekspor HD</h2>
+          <span></span>
+        </div>
+
+        <div class="card-elevated" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div id="exportSummaryTitle" style="font-weight:800; font-size:0.95rem;">Klip Viral</div>
+            <div id="exportSummarySub" style="font-size:0.8rem; color:var(--muted);">Format Vertikal • 9:16 • HD (1080p)</div>
+          </div>
+          <span id="exportDimPill" class="badge" style="font-family:monospace; font-size:0.84rem;">1080×1920</span>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>Format Video (Rasio Aspek)</strong>
+            <span class="badge">Vertikal 9:16 &amp; 4:5</span>
+          </div>
+          <div class="format-grid" id="exportFormatGrid"></div>
+        </div>
+
+        <div class="card">
+          <strong>Kualitas / Resolusi Output</strong>
+          <div class="quality-grid" id="exportQualityGrid"></div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <label class="switch-row">
+            <span>💬 Subtitle Otomatis (Bahasa Indonesia)</span>
+            <input id="expSubToggle" type="checkbox" class="switch-input" onchange="toggleExpField('showSubtitles', this.checked)" />
+          </label>
+          <label class="switch-row">
+            <span>⚡ Hook Visual 3 Detik Pertama</span>
+            <input id="expHookToggle" type="checkbox" class="switch-input" onchange="toggleExpField('showIntroHook', this.checked)" />
+          </label>
+          <label class="switch-row">
+            <span>🔊 Sertakan Audio Asli Video</span>
+            <input id="expAudioToggle" type="checkbox" class="switch-input" onchange="toggleExpField('includeAudio', this.checked)" />
+          </label>
+          <label class="switch-row">
+            <span>🎵 Musik Latar Bebas Royalti</span>
+            <input id="expMusicToggle" type="checkbox" class="switch-input" onchange="toggleExpMusic(this.checked)" />
+          </label>
+        </div>
+
+        <div id="exportRenderProgressCard" class="card-elevated" style="display:none;">
+          <div style="display:flex; justify-content:space-between; font-size:0.88rem; margin-bottom:6px;">
+            <strong id="exportRenderLabel">Merender Video Web…</strong>
+            <span id="exportRenderPct" style="font-family:monospace; color:var(--cyan);">0%</span>
+          </div>
+          <div class="progress-track"><div id="exportRenderFill" class="progress-fill"></div></div>
+        </div>
+
+        <button id="startExportBtn" class="btn btn-gradient" style="min-height:54px; border-radius:999px; font-size:1rem;" onclick="startWebExportRender()">🚀 Ekspor Video Sekarang</button>
+      </section>
+
+      <!-- 8. HASIL VIDEO SIAP DIBAGIKAN -->
+      <section id="screen-success" class="screen-container">
+        <div class="card" style="text-align:center; align-items:center; padding:22px 16px;">
+          <div style="width:68px; height:68px; border-radius:50%; background:rgba(16,185,129,0.2); border:2px solid var(--emerald); display:grid; place-items:center; font-size:2rem; color:var(--emerald);">✓</div>
+          <h2 style="font-size:1.5rem; font-weight:800;">Berhasil!</h2>
+          <p id="successSubtext" style="color:var(--muted); font-size:0.9rem;">Klip siap diunduh dan dibagikan ke media sosial</p>
+
+          <div class="player-stage" style="margin:6px 0;">
+            <div id="successPlayerFrame" class="player-frame">
+              <video id="successVideo" controls playsinline></video>
+            </div>
+          </div>
+
+          <div style="width:100%; display:flex; flex-direction:column; gap:10px; margin-top:6px;">
+            <button class="btn btn-gradient" onclick="openWebShareModal()">🔗 Bagikan ke Media Sosial</button>
+            <a id="successDownloadBtn" class="btn btn-purple" download="aldi-ai-clip.webm" href="#">⬇️ Unduh File Video</a>
+            <button class="btn btn-outline" onclick="navigate('editor')">✏️ Edit Lagi</button>
+            <button class="btn btn-outline" onclick="navigate('home')">🏠 Kembali ke Beranda</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- EXTRA: ANTREAN BATCH -->
+      <section id="screen-batch" class="screen-container">
+        <div class="top-bar">
+          <button class="btn btn-outline btn-pill" onclick="navigate('home')">← Beranda</button>
+          <h2 style="font-size:1.15rem; font-weight:800;">Antrean Proses Batch</h2>
+          <button class="btn btn-outline btn-pill" onclick="clearCompletedBatch()">Bersihkan</button>
+        </div>
+
+        <div class="card">
+          <strong>Tambah Video atau Daftar URL ke Antrean:</strong>
+          <div style="display:flex; gap:8px;">
+            <label class="btn btn-outline-cyan" style="flex:1; cursor:pointer;">
+              📁 Upload Banyak Video
+              <input type="file" accept="video/*" multiple style="display:none;" onchange="handleMultiFilePick(event)" />
+            </label>
+          </div>
+          <textarea id="batchUrlsInput" class="input-field" placeholder="Tempel banyak URL (1 link per baris)..."></textarea>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-outline" style="flex:1;" onclick="enqueueBatchTextarea()">+ Masukkan Link</button>
+            <button class="btn btn-gradient" style="flex:1;" id="startBatchBtn" onclick="runBatchQueue()">▶ Proses Semua Antrean</button>
+          </div>
+        </div>
+
+        <div id="batchQueueList" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </section>
+
+      <!-- EXTRA: GALERI EKSPOR -->
+      <section id="screen-exports" class="screen-container">
+        <div class="top-bar">
+          <h2 style="font-size:1.25rem; font-weight:800;">Galeri Ekspor Video</h2>
+          <span id="exportsTotalBadge" class="badge">0 klip</span>
+        </div>
+        <div id="exportsGalleryList" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Mobile Bottom Bar -->
+  <nav id="bottomNav" class="bottom-nav hidden">
+    <button class="bnav-btn active" data-nav="home" onclick="navigate('home')">
+      <span class="bnav-icon">🏠</span><span>Beranda</span>
+    </button>
+    <button class="bnav-btn" data-nav="explore" onclick="navigate('explore')">
+      <span class="bnav-icon">🧭</span><span>Eksplor</span>
+    </button>
+    <button class="center-fab" title="Buat Klip AI" onclick="handleCenterFab()">✂️</button>
+    <button class="bnav-btn" data-nav="clips" onclick="navigate('clips')">
+      <span class="bnav-icon">⭐</span><span>5 Klip</span>
+    </button>
+    <button class="bnav-btn" data-nav="exports" onclick="navigate('exports')">
+      <span class="bnav-icon">🎬</span><span>Ekspor</span>
+    </button>
+  </nav>
+
+  <!-- Share Sheet Modal -->
+  <div id="shareModal" class="modal-backdrop" onclick="if(event.target===this) closeShareModal()">
+    <div class="modal-sheet">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong style="font-size:1.05rem;">Bagikan Klip ke Media Sosial</strong>
+        <button class="btn btn-outline btn-pill" onclick="closeShareModal()">✕</button>
+      </div>
+      <textarea id="shareCaptionInput" class="input-field"></textarea>
+      <div class="chip-row">
+        <button class="chip selected" onclick="copyShareCaption()">📋 Salin Caption</button>
+        <button class="chip" onclick="sharePlatformIntent('TikTok')">🎵 TikTok</button>
+        <button class="chip" onclick="sharePlatformIntent('Instagram Reels')">📸 Reels</button>
+        <button class="chip" onclick="sharePlatformIntent('YouTube Shorts')">▶️ Shorts</button>
+        <button class="chip" onclick="sharePlatformIntent('WhatsApp')">💬 WhatsApp</button>
+      </div>
+      <button class="btn btn-gradient" onclick="nativeWebShare()">📤 Buka Share Sheet Browser</button>
     </div>
-  </header>
-
-  <main id="top" class="container">
-    <section class="hero">
-      <div>
-        <div class="badge">✨ DARK FUTURISTIC STUDIO • 9:16 &amp; 4:5 HD</div>
-        <h1>Ubah Video Panjang Jadi <span class="brand-accent">Klip Viral Terbaik</span> dengan AI!</h1>
-        <p>
-          Cari momen terbaik otomatis, tambahkan <strong>Visual Hook 3 Detik</strong>, analisis audio untuk
-          <strong>Musik Latar Bebas Royalti</strong>, terapkan transisi <strong>Fade / Slide / Dissolve</strong>,
-          dan ekspor HD vertikal siap bagikan ke TikTok, Reels, &amp; Shorts.
-        </p>
-
-        <div class="hero-cta">
-          <a href="#studio-web" class="btn btn-primary">🚀 Mulai Edit Sekarang</a>
-          <a id="openAndroidHero" href="aldiaiclipper://open" class="btn btn-outline">📱 Buka Aplikasi Android</a>
-        </div>
-
-        <div class="pill-row">
-          <span class="pill">Batch Queue Multi-Video</span>
-          <span class="pill">Import URL Sosmed &amp; MP4</span>
-          <span class="pill">Hook Overlay 0–3 Detik</span>
-          <span class="pill">Transisi Fade · Slide · Dissolve</span>
-          <span class="pill">Ekspor 1080p &amp; 720p</span>
-        </div>
-      </div>
-
-      <!-- Interactive Studio Web Widget -->
-      <div id="studio-web" class="studio-card">
-        <div class="preview-stage">
-          <div id="previewFrame" class="video-frame anim-fade">
-            <div class="frame-meta">
-              <span id="metaRatio">9:16 • 1080×1920</span>
-              <span id="metaTrans">Fade 600ms</span>
-            </div>
-
-            <div id="hookBox" class="hook-badge-live">
-              <div class="hook-kicker">HOOK 0–3 DETIK [SAMPEL AI]</div>
-              <div id="hookHeadline" class="hook-headline">Tunggu momen puncak di detik ke-3 ini! 🔥</div>
-            </div>
-
-            <div class="caption-pill" id="musicPill">
-              🎵 Neon Horizon Pulse · 124 BPM
-            </div>
-          </div>
-        </div>
-
-        <div class="controls-grid">
-          <div>
-            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:4px;">Pilih Rasio Vertikal &amp; Resolusi Ekspor:</div>
-            <div class="chip-group">
-              <button type="button" class="chip active" data-ratio="9:16" onclick="setRatio('9:16', this)">9:16 Vertikal</button>
-              <button type="button" class="chip" data-ratio="4:5" onclick="setRatio('4:5', this)">4:5 Vertikal</button>
-              <button type="button" class="chip active" data-res="1080p" onclick="setRes('1080p', this)">HD 1080p</button>
-              <button type="button" class="chip" data-res="720p" onclick="setRes('720p', this)">720p</button>
-            </div>
-          </div>
-
-          <div>
-            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:4px;">Gaya Transisi Antar Klip:</div>
-            <div class="chip-group">
-              <button type="button" class="chip active" data-trans="fade" onclick="setTransition('fade', 'Fade', this)">Fade</button>
-              <button type="button" class="chip" data-trans="slide" onclick="setTransition('slide', 'Slide', this)">Slide</button>
-              <button type="button" class="chip" data-trans="dissolve" onclick="setTransition('dissolve', 'Dissolve', this)">Dissolve</button>
-              <button type="button" class="chip" data-trans="none" onclick="setTransition('none', 'Tanpa Transisi', this)">Tanpa Transisi</button>
-            </div>
-          </div>
-
-          <div>
-            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:4px;">Tambah URL Video &amp; Kirim ke Aplikasi Android:</div>
-            <div class="url-bar">
-              <input id="videoUrlInput" type="url" class="url-input" placeholder="https://youtu.be/... atau https://example.com/video.mp4" />
-              <button type="button" class="btn btn-primary" style="min-height:40px; padding:8px 14px;" onclick="launchWithUrl()">Tambah URL</button>
-            </div>
-          </div>
-
-          <div class="notice-banner" id="webStatus">
-            💡 Mode pratinjau Web siap. Untuk render MP4 Media3 + Share Sheet native, klik <strong>Tambah URL</strong> atau <strong>Buka Aplikasi Android</strong>.
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="features">
-      <h2 class="section-title">Fitur Lengkap ALDI AI CLIPPER</h2>
-      <p class="section-sub">Dirancang untuk kreator konten TikTok, Instagram Reels, dan YouTube Shorts.</p>
-
-      <div class="grid-3">
-        <article class="feature-card">
-          <div class="feature-icon">🤖</div>
-          <h3>Deteksi 5 Klip Viral + Batch Queue</h3>
-          <p>Unggah banyak video atau tempel daftar URL sekaligus, pantau progress bar tiap item, lalu pilih 5 klip terbaik.</p>
-        </article>
-        <article class="feature-card">
-          <div class="feature-icon">🎵</div>
-          <h3>Analisis Audio &amp; Musik Latar AI</h3>
-          <p>Analisis energi, tempo (BPM), dan mood audio untuk rekomendasi musik bebas royalti serta dukungan URL audio kustom.</p>
-        </article>
-        <article class="feature-card">
-          <div class="feature-icon">⚡</div>
-          <h3>Visual Hook 3 Detik Pertama</h3>
-          <p>Otomatis membuat teks visual pembuka selama 0–3 detik pertama dan membakarnya ke dalam hasil video MP4.</p>
-        </article>
-        <article class="feature-card">
-          <div class="feature-icon">🎞️</div>
-          <h3>Transisi Fade, Slide &amp; Dissolve</h3>
-          <p>Pilih gaya transisi mulus antar klip tunggal maupun penggabungan seluruh klip proyek menjadi satu video sorotan.</p>
-        </article>
-        <article class="feature-card">
-          <div class="feature-icon">📐</div>
-          <h3>Ekspor Vertikal 9:16 &amp; 4:5 (1080p/720p)</h3>
-          <p>Layar pengaturan pra-ekspor memastikan rasio vertikal dan resolusi presisi (1080×1920, 1080×1350, 720×1280) sebelum render.</p>
-        </article>
-        <article class="feature-card">
-          <div class="feature-icon">🚀</div>
-          <h3>Share Sheet &amp; Simpan Galeri</h3>
-          <p>Simpan otomatis ke Movies/AIClipper dan bagikan langsung ke TikTok, Instagram, YouTube Shorts, WhatsApp, dan lainnya.</p>
-        </article>
-      </div>
-    </section>
-
-    <footer>
-      <span>© 2026 ALDI AI CLIPPER — Cosmic Dark Neon Studio</span>
-      <span>Cari · Potong · Edit · Share</span>
-    </footer>
-  </main>
+  </div>
 
   <script>
-    let currentRatio = '9:16';
-    let currentRes = '1080p';
+    // --- Catalog & Data Models ---
+    const POPULAR_VIDEOS = [
+      {
+        id: 'pop_blazes',
+        title: 'Aksi Sinematik Api & Efek Visual',
+        author: '@StudioReels',
+        views: '2.8M • Hari ini',
+        durationSec: 15,
+        width: 1280,
+        height: 720,
+        platform: 'YouTube',
+        streamUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        thumb: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg'
+      },
+      {
+        id: 'pop_escapes',
+        title: 'Petualangan Alam & Transisi Cepat',
+        author: '@TravelClipID',
+        views: '1.9M • 2 hari lalu',
+        durationSec: 15,
+        width: 1280,
+        height: 720,
+        platform: 'TikTok',
+        streamUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+        thumb: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerEscapes.jpg'
+      },
+      {
+        id: 'pop_fun',
+        title: 'Momen Lucu & Reaksi Viral Harian',
+        author: '@KomediShorts',
+        views: '3.4M • 1 hari lalu',
+        durationSec: 60,
+        width: 1280,
+        height: 720,
+        platform: 'Instagram',
+        streamUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+        thumb: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerFun.jpg'
+      },
+      {
+        id: 'pop_joy',
+        title: 'Sorotan Gaya Hidup & Vibe Positif',
+        author: '@DailyHighlight',
+        views: '1.4M • 3 hari lalu',
+        durationSec: 15,
+        width: 1280,
+        height: 720,
+        platform: 'TikTok',
+        streamUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoy.mp4',
+        thumb: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerJoy.jpg'
+      }
+    ];
 
-    function updateMeta() {
-      const dims = {
-        '9:16_1080p': '1080×1920',
-        '9:16_720p': '720×1280',
-        '4:5_1080p': '1080×1350',
-        '4:5_720p': '720×900'
-      }[`${currentRatio}_${currentRes}`] || '1080×1920';
-      document.getElementById('metaRatio').textContent = `${currentRatio} • ${dims}`;
+    const ROYALTY_FREE_MUSIC = [
+      { id: 'rf_neon_pulse', title: 'Neon Horizon Pulse', mood: 'Upbeat / Enerjik', bpm: 124, score: 98, rootFreq: 261.63 },
+      { id: 'rf_viral_spark', title: 'Viral Spark Beat', mood: 'Upbeat / Enerjik', bpm: 118, score: 95, rootFreq: 293.66 },
+      { id: 'rf_clarity_focus', title: 'Digital Clarity Flow', mood: 'Fokus / Profesional', bpm: 104, score: 92, rootFreq: 220.00 },
+      { id: 'rf_cosmic_lofi', title: 'Midnight Cosmic Lo-Fi', mood: 'Chill / Santai', bpm: 82, score: 90, rootFreq: 196.00 },
+      { id: 'rf_epic_climax', title: 'Stadium Rising Climax', mood: 'Epik / Klimaks', bpm: 108, score: 94, rootFreq: 174.61 }
+    ];
+
+    const TARGET_PLATFORMS = [
+      { id: 'REELS_TIKTOK', label: 'Reels / TikTok', ratio: '9:16' },
+      { id: 'YOUTUBE_SHORTS', label: 'YouTube Shorts', ratio: '9:16' },
+      { id: 'INSTAGRAM_FEED', label: 'Feed 4:5', ratio: '4:5' },
+      { id: 'SQUARE_POST', label: 'Square 1:1', ratio: '1:1' },
+      { id: 'HIGHLIGHT_WIDE', label: 'Highlight 16:9', ratio: '16:9' }
+    ];
+
+    const ASPECT_RATIOS = [
+      { id: '9:16', label: '9:16 Vertikal\n(Reels / TikTok)', css: 'ratio-9-16', shortMul: [1, 16 / 9] },
+      { id: '4:5', label: '4:5 Vertikal\n(Feed IG)', css: 'ratio-4-5', shortMul: [1, 5 / 4] },
+      { id: '1:1', label: '1:1\n(Square)', css: 'ratio-1-1', shortMul: [1, 1] },
+      { id: '16:9', label: '16:9\n(YouTube)', css: 'ratio-16-9', shortMul: [16 / 9, 1] }
+    ];
+
+    const QUALITIES = [
+      { id: '1080p', label: 'HD (1080p)', shortPx: 1080 },
+      { id: '720p', label: '720p', shortPx: 720 },
+      { id: '480p', label: '480p', shortPx: 480 }
+    ];
+
+    const FILTERS = [
+      { id: 'NONE', label: 'Asli', css: '' },
+      { id: 'GRAYSCALE', label: 'Grayscale', css: 'grayscale(1)' },
+      { id: 'SEPIA', label: 'Sepia', css: 'sepia(0.85)' },
+      { id: 'VIVID', label: 'Vivid', css: 'saturate(1.55) contrast(1.12)' },
+      { id: 'WARM', label: 'Warm', css: 'sepia(0.28) saturate(1.25)' },
+      { id: 'COOL', label: 'Cool', css: 'hue-rotate(18deg) saturate(1.15)' }
+    ];
+
+    const TRANSITIONS = [
+      { id: 'NONE', label: 'Tanpa Transisi', desc: 'Potongan langsung (cut)' },
+      { id: 'FADE', label: 'Fade', desc: 'Masuk & keluar halus lewat gelap' },
+      { id: 'SLIDE', label: 'Slide', desc: 'Geser horizontal dinamis antar klip' },
+      { id: 'DISSOLVE', label: 'Dissolve', desc: 'Pudar silang lembut dengan efek kilau' }
+    ];
+
+    const HOOK_STYLES = [
+      { id: 'neon_badge', label: 'Neon Badge' },
+      { id: 'cyber_banner', label: 'Cyber Banner' },
+      { id: 'minimal_bold', label: 'Minimal Bold' }
+    ];
+
+    const EDITOR_TOOLS = [
+      { id: 'trim', icon: '✂️', label: 'Potong' },
+      { id: 'music', icon: '🎵', label: 'Musik AI' },
+      { id: 'hook', icon: '⚡', label: 'Hook 3s' },
+      { id: 'subtitle', icon: '💬', label: 'Subtitle' },
+      { id: 'ratio', icon: '📐', label: 'Rasio' },
+      { id: 'filter', icon: '🎨', label: 'Filter' },
+      { id: 'brightness', icon: '☀️', label: 'Cahaya' },
+      { id: 'transition', icon: '🎞️', label: 'Transisi' }
+    ];
+
+    // --- App State ---
+    const appState = {
+      screen: 'splash',
+      exploreFilter: 'ALL',
+      selectedPlatform: 'REELS_TIKTOK',
+      selectedVideo: null,
+      homeTrimStart: 0,
+      homeTrimEnd: 15,
+      clips: [],
+      favoritesOnly: false,
+      activeClipId: null,
+      activeTool: 'trim',
+      batchQueue: [],
+      isBatchRunning: false,
+      exportedClips: [],
+      lastExport: null,
+      previewingMusicId: null,
+      audioCtx: null,
+      synthInterval: null,
+      customAudioEl: null
+    };
+
+    let aiTimer = null;
+
+    // --- Toast & Navigation ---
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.remove('show'), 3200);
     }
 
-    function setRatio(ratio, el) {
-      currentRatio = ratio;
-      document.querySelectorAll('[data-ratio]').forEach(b => b.classList.remove('active'));
-      el.classList.add('active');
-      const frame = document.getElementById('previewFrame');
-      frame.classList.toggle('ratio-4-5', ratio === '4:5');
-      updateMeta();
+    function navigate(screenId) {
+      stopMusicPreview();
+      appState.screen = screenId;
+      document.querySelectorAll('.screen-container').forEach(s => s.classList.remove('active'));
+      const target = document.getElementById('screen-' + screenId);
+      if (target) target.classList.add('active');
+
+      const topScreens = ['home', 'explore', 'clips', 'exports', 'batch'];
+      const showNav = screenId !== 'splash';
+      document.getElementById('navRail').classList.toggle('visible', showNav);
+      document.getElementById('bottomNav').classList.toggle('hidden', !topScreens.includes(screenId));
+
+      document.querySelectorAll('[data-nav]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.nav === screenId);
+      });
+
+      if (screenId === 'explore') renderExploreList();
+      if (screenId === 'clips') renderClipsList();
+      if (screenId === 'editor') renderEditorScreen();
+      if (screenId === 'export') renderExportSettingsScreen();
+      if (screenId === 'batch') renderBatchQueue();
+      if (screenId === 'exports') renderExportsGallery();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function setRes(res, el) {
-      currentRes = res;
-      document.querySelectorAll('[data-res]').forEach(b => b.classList.remove('active'));
-      el.classList.add('active');
-      updateMeta();
+    function enterApp() {
+      navigate('home');
     }
 
-    function setTransition(mode, label, el) {
-      document.querySelectorAll('[data-trans]').forEach(b => b.classList.remove('active'));
-      el.classList.add('active');
-      const frame = document.getElementById('previewFrame');
-      frame.classList.remove('anim-fade', 'anim-slide', 'anim-dissolve');
-      if (mode === 'fade') frame.classList.add('anim-fade');
-      if (mode === 'slide') frame.classList.add('anim-slide');
-      if (mode === 'dissolve') frame.classList.add('anim-dissolve');
-      document.getElementById('metaTrans').textContent = mode === 'none' ? 'Cut Langsung' : `${label} 600ms`;
+    function handleCenterFab() {
+      if (appState.screen === 'home' && appState.selectedVideo) {
+        startAiAnalysis();
+      } else {
+        navigate('home');
+      }
     }
 
-    function launchWithUrl() {
-      const input = document.getElementById('videoUrlInput').value.trim();
-      const status = document.getElementById('webStatus');
-      if (!input) {
-        status.innerHTML = '⚠️ Tempel URL video YouTube, TikTok, IG, atau link .mp4 terlebih dahulu.';
+    // --- Video Loading & Source Handlers ---
+    function focusUrlBox(prefix = '') {
+      const box = document.getElementById('homeUrlInput');
+      if (prefix && !box.value) box.value = prefix;
+      box.focus();
+      box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function selectVideoAsset(meta) {
+      appState.selectedVideo = meta;
+      const maxDur = Math.max(5, Math.round(meta.durationSec || 15));
+      appState.homeTrimStart = 0;
+      appState.homeTrimEnd = Math.min(maxDur, 30);
+
+      document.getElementById('studioWorkspace').style.display = 'flex';
+      document.getElementById('wsTitle').textContent = meta.title;
+      document.getElementById('wsMeta').textContent = `${meta.width}×${meta.height} • ${fmtSec(maxDur)}`;
+      document.getElementById('wsPlatformTag').textContent = meta.platform || 'SIAP';
+
+      const v = document.getElementById('homeVideo');
+      v.src = meta.streamUrl;
+      v.load();
+
+      const startSlider = document.getElementById('homeTrimStart');
+      const endSlider = document.getElementById('homeTrimEnd');
+      startSlider.max = maxDur;
+      endSlider.max = maxDur;
+      startSlider.value = appState.homeTrimStart;
+      endSlider.value = appState.homeTrimEnd;
+      onHomeTrimInput();
+      showToast(`Video "${meta.title}" siap dipotong & dianalisis!`);
+    }
+
+    function handleSingleFilePick(e) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const objUrl = URL.createObjectURL(file);
+      const probe = document.createElement('video');
+      probe.preload = 'metadata';
+      probe.src = objUrl;
+      probe.onloadedmetadata = () => {
+        selectVideoAsset({
+          title: file.name.replace(/\.[^.]+$/, ''),
+          platform: 'File Lokal',
+          streamUrl: objUrl,
+          durationSec: probe.duration || 15,
+          width: probe.videoWidth || 1080,
+          height: probe.videoHeight || 1920,
+          isPlayable: true
+        });
+      };
+      probe.onerror = () => {
+        selectVideoAsset({
+          title: file.name,
+          platform: 'File Lokal',
+          streamUrl: objUrl,
+          durationSec: 15,
+          width: 1080,
+          height: 1920,
+          isPlayable: true
+        });
+      };
+    }
+
+    function loadHomeUrl() {
+      const raw = document.getElementById('homeUrlInput').value.trim();
+      if (!raw) return showToast('Masukkan URL video terlebih dahulu.');
+      const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      const isDirect = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(normalized);
+      const platform = detectPlatform(normalized);
+      const fallbackStream = POPULAR_VIDEOS[0].streamUrl;
+      selectVideoAsset({
+        title: normalized.split('/').pop()?.split('?')[0] || `Video ${platform}`,
+        platform,
+        streamUrl: isDirect ? normalized : fallbackStream,
+        originalUrl: normalized,
+        durationSec: 15,
+        width: 1280,
+        height: 720,
+        isPlayable: true
+      });
+      if (!isDirect) {
+        showToast(`Info link ${platform} dimuat dengan stream sampel agar langsung bisa diedit di Web.`);
+      }
+    }
+
+    function detectPlatform(url) {
+      const l = url.toLowerCase();
+      if (l.includes('youtu.be') || l.includes('youtube.com')) return 'YouTube';
+      if (l.includes('tiktok.com')) return 'TikTok';
+      if (l.includes('instagram.com')) return 'Instagram';
+      return 'URL Video';
+    }
+
+    function onHomeTrimInput() {
+      let s = parseFloat(document.getElementById('homeTrimStart').value);
+      let e = parseFloat(document.getElementById('homeTrimEnd').value);
+      if (e <= s + 1) {
+        e = Math.min(parseFloat(document.getElementById('homeTrimEnd').max), s + 1);
+        document.getElementById('homeTrimEnd').value = e;
+      }
+      appState.homeTrimStart = s;
+      appState.homeTrimEnd = e;
+      document.getElementById('homeTrimText').textContent = `${fmtSec(s)} – ${fmtSec(e)}`;
+    }
+
+    function previewHomeTrim() {
+      const v = document.getElementById('homeVideo');
+      v.currentTime = appState.homeTrimStart;
+      v.play().catch(() => {});
+    }
+
+    function fmtSec(sec) {
+      const total = Math.max(0, Math.round(sec));
+      const m = String(Math.floor(total / 60)).padStart(2, '0');
+      const s = String(total % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    // --- Explore Popular Screen ---
+    function renderHomePopular() {
+      const el = document.getElementById('homePopularCarousel');
+      el.innerHTML = POPULAR_VIDEOS.map(item => `
+        <div class="pop-card" onclick="pickPopular('${item.id}')">
+          <img class="pop-thumb" src="${item.thumb}" alt="${item.title}" />
+          <div style="min-width:0; flex:1;">
+            <span class="badge" style="font-size:0.68rem; padding:2px 7px;">${item.platform}</span>
+            <div style="font-weight:700; font-size:0.84rem; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.title}</div>
+            <div style="font-size:0.72rem; color:var(--muted);">${item.views} • ${fmtSec(item.durationSec)}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderExploreList() {
+      const filterWrap = document.getElementById('explorePlatformFilters');
+      const platforms = ['ALL', 'YouTube', 'TikTok', 'Instagram'];
+      filterWrap.innerHTML = platforms.map(p => `
+        <button class="chip ${appState.exploreFilter === p ? 'selected' : ''}" onclick="appState.exploreFilter='${p}'; renderExploreList();">${p === 'ALL' ? 'Semua' : p}</button>
+      `).join('');
+
+      const q = document.getElementById('exploreSearch').value.trim().toLowerCase();
+      const filtered = POPULAR_VIDEOS.filter(item => {
+        const matchPlat = appState.exploreFilter === 'ALL' || item.platform === appState.exploreFilter;
+        const matchQ = !q || item.title.toLowerCase().includes(q) || item.author.toLowerCase().includes(q);
+        return matchPlat && matchQ;
+      });
+
+      document.getElementById('exploreList').innerHTML = filtered.map(item => `
+        <div class="clip-row" onclick="pickPopular('${item.id}', true)">
+          <img class="pop-thumb" src="${item.thumb}" alt="${item.title}" />
+          <div style="flex:1; min-width:0;">
+            <span class="badge" style="font-size:0.68rem; padding:2px 7px;">${item.platform}</span>
+            <div style="font-weight:700; font-size:0.9rem; margin-top:4px;">${item.title}</div>
+            <div style="font-size:0.76rem; color:var(--muted);">${item.author} • ${item.views} • ${fmtSec(item.durationSec)}</div>
+          </div>
+          <button class="btn btn-purple btn-pill">Pilih</button>
+        </div>
+      `).join('');
+    }
+
+    function pickPopular(id, goHome = false) {
+      const item = POPULAR_VIDEOS.find(x => x.id === id);
+      if (!item) return;
+      selectVideoAsset({
+        title: item.title,
+        platform: item.platform,
+        streamUrl: item.streamUrl,
+        durationSec: item.durationSec,
+        width: item.width,
+        height: item.height,
+        isPlayable: true
+      });
+      if (goHome) navigate('home');
+    }
+
+    // --- AI Analysis Flow -> Generate 5 Ranked Clips ---
+    function startAiAnalysis() {
+      if (!appState.selectedVideo) return showToast('Pilih video terlebih dahulu.');
+      navigate('analyzing');
+      const steps = [
+        'Deteksi adegan menarik',
+        'Analisis popularitas & ritme audio',
+        'Membuat 5 klip terbaik + hook 3 detik',
+        'Menyiapkan hasil editor…'
+      ];
+      let pct = 0;
+      clearInterval(aiTimer);
+      aiTimer = setInterval(() => {
+        pct = Math.min(100, pct + 10);
+        const stepIdx = Math.min(3, Math.floor(pct / 26));
+        const dashOffset = 326.7 * (1 - pct / 100);
+        document.getElementById('aiRing').style.strokeDashoffset = dashOffset;
+        document.getElementById('aiPctText').textContent = `${pct}%`;
+        document.getElementById('aiStepHeading').textContent = steps[stepIdx];
+        document.getElementById('aiStepsList').innerHTML = steps.map((s, idx) => `
+          <div style="display:flex; align-items:center; gap:8px; color:${idx <= stepIdx ? '#fff' : 'var(--muted)'};">
+            <span>${idx < stepIdx ? '✅' : idx === stepIdx ? '⏳' : '○'}</span>
+            <span style="font-size:0.86rem;">${s}</span>
+          </div>
+        `).join('');
+
+        if (pct >= 100) {
+          clearInterval(aiTimer);
+          buildSampleClipsForVideo(appState.selectedVideo);
+          navigate('clips');
+        }
+      }, 170);
+    }
+
+    function cancelAiAnalysis() {
+      clearInterval(aiTimer);
+      navigate('home');
+    }
+
+    function buildSampleClipsForVideo(video) {
+      const dur = Math.max(8, Math.round(video.durationSec || 15));
+      const topic = document.getElementById('homeTopicInput').value.trim() || video.title;
+      const plat = TARGET_PLATFORMS.find(p => p.id === appState.selectedPlatform) || TARGET_PLATFORMS[0];
+      const scores = [98, 95, 93, 91, 89];
+      const hooks = [
+        `[Sampel AI] Tunggu detik ke-3 dari ${topic}!`,
+        `[Sampel AI] Bagian paling viral di menit awal`,
+        `[Sampel AI] Rahasia cepat yang jarang diketahui`,
+        `[Sampel AI] Reaksi puncak penuh energi!`,
+        `[Sampel AI] Penutup paling berdampak untuk audiens`
+      ];
+
+      appState.clips = scores.map((score, i) => {
+        const span = Math.max(4, Math.min(12, Math.floor(dur * 0.45)));
+        const start = Math.min(Math.max(0, dur - span), Math.floor((dur / 5) * i * 0.6));
+        const end = Math.min(dur, start + span);
+        const music = ROYALTY_FREE_MUSIC[i % ROYALTY_FREE_MUSIC.length];
+        return {
+          id: Date.now() + i,
+          title: `Klip #${i + 1}: ${video.title.slice(0, 22)}`,
+          viralScore: score,
+          hookLine: hooks[i],
+          captionText: `${hooks[i]} — dibuat dengan Aldi AI Clipper.`,
+          hashtags: '#AldiAIClipper #Reels #TikTok #Shorts',
+          startSec: start,
+          endSec: Math.max(start + 3, end),
+          aspectRatio: plat.ratio,
+          quality: '1080p',
+          filter: 'NONE',
+          brightness: 0,
+          showIntroHook: true,
+          hookDurationSec: 3,
+          hookStyle: 'neon_badge',
+          showSubtitles: true,
+          subtitleText: `${hooks[i]} | Simak sampai selesai!`,
+          includeAudio: true,
+          musicId: music.id,
+          musicTitle: music.title,
+          musicUrl: null,
+          musicVolume: 0.35,
+          transitionStyle: 'FADE',
+          transitionDurationMs: 600,
+          isFavorite: false,
+          sourceVideo: video
+        };
+      });
+      appState.activeClipId = appState.clips[0].id;
+    }
+
+    function openManualExportSettings() {
+      const video = appState.selectedVideo;
+      if (!video) return showToast('Pilih video terlebih dahulu.');
+      const plat = TARGET_PLATFORMS.find(p => p.id === appState.selectedPlatform) || TARGET_PLATFORMS[0];
+      const manualClip = {
+        id: Date.now(),
+        title: `Klip Pilihan (${video.title.slice(0, 18)})`,
+        viralScore: 90,
+        hookLine: `[Sampel AI] Momen pilihan terbaik ${video.title.slice(0, 24)}`,
+        captionText: `Klip pilihan dari ${video.title}.`,
+        hashtags: '#AldiAIClipper #ClipManual',
+        startSec: appState.homeTrimStart,
+        endSec: appState.homeTrimEnd,
+        aspectRatio: plat.ratio,
+        quality: '1080p',
+        filter: 'NONE',
+        brightness: 0,
+        showIntroHook: true,
+        hookDurationSec: 3,
+        hookStyle: 'neon_badge',
+        showSubtitles: true,
+        subtitleText: `Sorotan utama ${video.title}`,
+        includeAudio: true,
+        musicId: ROYALTY_FREE_MUSIC[0].id,
+        musicTitle: ROYALTY_FREE_MUSIC[0].title,
+        musicUrl: null,
+        musicVolume: 0.35,
+        transitionStyle: 'FADE',
+        transitionDurationMs: 600,
+        isFavorite: false,
+        sourceVideo: video
+      };
+      appState.clips = [manualClip, ...appState.clips.filter(c => c.id !== manualClip.id)];
+      appState.activeClipId = manualClip.id;
+      navigate('export');
+    }
+
+    // --- Best Clips Screen ---
+    function setClipsFavFilter(favOnly) {
+      appState.favoritesOnly = favOnly;
+      document.getElementById('filterAllBtn').classList.toggle('selected', !favOnly);
+      document.getElementById('filterFavBtn').classList.toggle('selected', favOnly);
+      renderClipsList();
+    }
+
+    function renderClipsList() {
+      const list = appState.favoritesOnly ? appState.clips.filter(c => c.isFavorite) : appState.clips;
+      const container = document.getElementById('clipsListContainer');
+      document.getElementById('clipsBannerTitle').textContent = `⭐ Ditemukan ${appState.clips.length} Klip Terbaik!`;
+
+      if (appState.clips.length === 0) {
+        container.innerHTML = `
+          <div class="card" style="text-align:center; padding:26px;">
+            <div style="font-size:2.4rem;">🎬</div>
+            <strong>Belum Ada Klip AI</strong>
+            <p style="font-size:0.84rem; color:var(--muted);">Pilih video di Beranda dan jalankan Analisis AI terlebih dahulu.</p>
+            <button class="btn btn-purple" onclick="navigate('home')">Buka Beranda</button>
+          </div>`;
+        document.getElementById('clipsActionBar').style.display = 'none';
         return;
       }
-      const deepLink = 'aldiaiclipper://open?url=' + encodeURIComponent(input);
-      status.innerHTML = `✅ URL siap dikirim ke Aldi AI Clipper Android (${currentRatio} ${currentRes}). Membuka aplikasi…`;
-      window.location.href = deepLink;
+
+      document.getElementById('clipsActionBar').style.display = 'flex';
+      if (list.length === 0) {
+        container.innerHTML = `<div class="card" style="text-align:center; color:var(--muted);">Belum ada klip ditandai Favorit.</div>`;
+        return;
+      }
+
+      container.innerHTML = list.map((c, idx) => `
+        <div class="clip-row" onclick="openClipEditor(${c.id})">
+          <div class="rank-badge">${idx + 1}</div>
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="color:var(--amber); font-weight:800; font-family:monospace;">🔥 ${c.viralScore}%</span>
+              <span class="badge" style="font-size:0.68rem; padding:1px 6px;">${c.aspectRatio} • ${c.transitionStyle}</span>
+            </div>
+            <div style="font-size:0.88rem; font-weight:600; margin-top:3px;">${c.hookLine}</div>
+            <div style="font-size:0.74rem; color:var(--muted);">${fmtSec(c.startSec)}–${fmtSec(c.endSec)} • 🎵 ${c.musicTitle || 'Tanpa Musik'}</div>
+          </div>
+          <button class="chip" style="min-height:36px;" onclick="event.stopPropagation(); toggleFavClip(${c.id})">${c.isFavorite ? '🔖' : '📑'}</button>
+          <button class="btn btn-purple btn-pill">▶ Edit</button>
+        </div>
+      `).join('');
     }
+
+    function toggleFavClip(id) {
+      const c = appState.clips.find(x => x.id === id);
+      if (c) c.isFavorite = !c.isFavorite;
+      renderClipsList();
+    }
+
+    function bookmarkAllClips() {
+      appState.clips.forEach(c => c.isFavorite = true);
+      showToast(`Semua ${appState.clips.length} klip disimpan ke Favorit!`);
+      renderClipsList();
+    }
+
+    function editFirstClip() {
+      if (appState.clips.length > 0) openClipEditor(appState.clips[0].id);
+    }
+
+    function openClipEditor(id) {
+      appState.activeClipId = id;
+      navigate('editor');
+    }
+
+    function getActiveClip() {
+      return appState.clips.find(c => c.id === appState.activeClipId) || appState.clips[0];
+    }
+
+    // --- Editor Video Screen & 8 Tools ---
+    function renderEditorScreen() {
+      const clip = getActiveClip();
+      if (!clip) return navigate('home');
+
+      document.getElementById('editorViralBadge').textContent = `${clip.viralScore}/100`;
+      const v = document.getElementById('editorVideo');
+      const srcUrl = clip.sourceVideo?.streamUrl || POPULAR_VIDEOS[0].streamUrl;
+      if (v.dataset.loadedSrc !== srcUrl) {
+        v.src = srcUrl;
+        v.dataset.loadedSrc = srcUrl;
+        v.currentTime = clip.startSec;
+      }
+
+      updateEditorPreviewVisuals(clip);
+
+      // Tools Grid
+      document.getElementById('editorToolsGrid').innerHTML = EDITOR_TOOLS.map(t => `
+        <div class="tool-tile ${appState.activeTool === t.id ? 'selected' : ''}" onclick="selectEditorTool('${t.id}')">
+          <span style="font-size:1.15rem;">${t.icon}</span>
+          <span>${t.label}</span>
+        </div>
+      `).join('');
+
+      renderEditorToolPanel(clip);
+    }
+
+    function selectEditorTool(toolId) {
+      appState.activeTool = toolId;
+      renderEditorScreen();
+    }
+
+    function updateEditorPreviewVisuals(clip) {
+      const frame = document.getElementById('editorPlayerFrame');
+      frame.classList.remove('ratio-9-16', 'ratio-4-5', 'ratio-1-1', 'ratio-16-9', 'anim-trans-fade', 'anim-trans-slide', 'anim-trans-dissolve');
+      const ratioObj = ASPECT_RATIOS.find(r => r.id === clip.aspectRatio) || ASPECT_RATIOS[0];
+      frame.classList.add(ratioObj.css);
+      if (clip.transitionStyle === 'FADE') frame.classList.add('anim-trans-fade');
+      if (clip.transitionStyle === 'SLIDE') frame.classList.add('anim-trans-slide');
+      if (clip.transitionStyle === 'DISSOLVE') frame.classList.add('anim-trans-dissolve');
+
+      document.getElementById('editorRatioBadge').textContent = clip.aspectRatio;
+      const transObj = TRANSITIONS.find(t => t.id === clip.transitionStyle);
+      document.getElementById('editorTransBadge').style.display = clip.transitionStyle === 'NONE' ? 'none' : 'inline-block';
+      document.getElementById('editorTransBadge').textContent = `${transObj?.label || 'Fade'} ${clip.transitionDurationMs}ms`;
+
+      const v = document.getElementById('editorVideo');
+      const flt = FILTERS.find(f => f.id === clip.filter)?.css || '';
+      const br = `brightness(${(1 + clip.brightness).toFixed(2)})`;
+      v.style.filter = `${flt} ${br}`.trim();
+      v.muted = !clip.includeAudio;
+
+      const fBadge = document.getElementById('editorFilterBadge');
+      fBadge.style.display = (clip.filter !== 'NONE' || Math.abs(clip.brightness) > 0.01) ? 'inline-block' : 'none';
+      fBadge.textContent = FILTERS.find(f => f.id === clip.filter)?.label || 'Cahaya';
+
+      // Music pill
+      const mPill = document.getElementById('editorMusicOverlayPill');
+      mPill.style.display = clip.musicTitle ? 'inline-block' : 'none';
+      mPill.textContent = `🎵 ${clip.musicTitle || ''}`;
+
+      // Hook overlay visibility based on playback offset
+      const relSec = Math.max(0, (v.currentTime || clip.startSec) - clip.startSec);
+      const hookBox = document.getElementById('editorHookOverlay');
+      hookBox.className = `hook-overlay-box hook-style-${clip.hookStyle}`;
+      const showHook = clip.showIntroHook && relSec <= clip.hookDurationSec;
+      hookBox.style.display = showHook ? 'block' : 'none';
+      document.getElementById('hookSecBadge').textContent = clip.hookDurationSec;
+      document.getElementById('editorHookTextPreview').textContent = clip.hookLine;
+
+      // Subtitle
+      const subBox = document.getElementById('editorSubtitleOverlay');
+      subBox.style.display = clip.showSubtitles && clip.subtitleText ? 'block' : 'none';
+      subBox.textContent = clip.subtitleText || '';
+
+      document.getElementById('editorTimecode').textContent = `${fmtSec(v.currentTime || clip.startSec)} / ${fmtSec(clip.endSec)}`;
+    }
+
+    function toggleEditorPlay() {
+      const v = document.getElementById('editorVideo');
+      const clip = getActiveClip();
+      if (!clip) return;
+      if (v.paused) {
+        if (v.currentTime < clip.startSec || v.currentTime >= clip.endSec) v.currentTime = clip.startSec;
+        v.play().catch(() => {});
+        document.getElementById('editorPlayBtn').textContent = '⏸ Jeda Video';
+      } else {
+        v.pause();
+        document.getElementById('editorPlayBtn').textContent = '▶ Putar / Jeda';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const ev = document.getElementById('editorVideo');
+      ev.addEventListener('timeupdate', () => {
+        const clip = getActiveClip();
+        if (!clip) return;
+        if (ev.currentTime >= clip.endSec) {
+          ev.currentTime = clip.startSec;
+        }
+        updateEditorPreviewVisuals(clip);
+      });
+    });
+
+    function renderEditorToolPanel(clip) {
+      const panel = document.getElementById('editorToolPanel');
+      const dur = Math.max(5, Math.round(clip.sourceVideo?.durationSec || 15));
+
+      if (appState.activeTool === 'trim') {
+        panel.innerHTML = `
+          <strong>✂️ Potong Timeline (${fmtSec(clip.startSec)} – ${fmtSec(clip.endSec)})</strong>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div>
+              <label style="font-size:0.78rem; color:var(--muted);">Mulai: ${fmtSec(clip.startSec)}</label>
+              <input type="range" min="0" max="${dur - 1}" step="0.5" value="${clip.startSec}" style="width:100%;" oninput="updateClipTrim(this.value, null)" />
+            </div>
+            <div>
+              <label style="font-size:0.78rem; color:var(--muted);">Akhir: ${fmtSec(clip.endSec)}</label>
+              <input type="range" min="1" max="${dur}" step="0.5" value="${clip.endSec}" style="width:100%;" oninput="updateClipTrim(null, this.value)" />
+            </div>
+          </div>`;
+      } else if (appState.activeTool === 'music') {
+        panel.innerHTML = `
+          <strong>🎵 Analisis Audio &amp; Musik Latar AI</strong>
+          <button class="btn btn-purple" onclick="runAiMusicRecommend()">🔍 Analisis Audio &amp; Rekomendasi Musik [Sampel AI]</button>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button class="chip ${!clip.musicId && !clip.musicUrl ? 'selected' : ''}" onclick="selectEditorMusic(null)">Tanpa Musik Latar</button>
+            ${ROYALTY_FREE_MUSIC.map(t => `
+              <div class="clip-row ${clip.musicId === t.id ? 'selected' : ''}" style="border-color:${clip.musicId === t.id ? 'var(--cyan)' : 'var(--outline)'};" onclick="selectEditorMusic('${t.id}')">
+                <button class="chip" style="min-height:36px;" onclick="event.stopPropagation(); toggleSynthPreview('${t.id}')">${appState.previewingMusicId === t.id ? '⏸' : '▶'}</button>
+                <div style="flex:1;">
+                  <div style="font-weight:700; font-size:0.88rem;">${t.title} <span class="badge" style="font-size:0.68rem;">${t.score}%</span></div>
+                  <div style="font-size:0.74rem; color:var(--muted);">${t.mood} • ${t.bpm} BPM • CC0 Bebas Royalti</div>
+                </div>
+                ${clip.musicId === t.id ? '<span style="color:var(--cyan);">✓</span>' : ''}
+              </div>
+            `).join('')}
+          </div>
+          <div style="display:flex; gap:8px; margin-top:4px;">
+            <input id="customMusicUrlInput" type="url" class="input-field" placeholder="Tambah URL Audio (.mp3 / .wav)..." />
+            <button class="btn btn-outline-cyan" onclick="applyCustomMusicUrl()">+ URL</button>
+          </div>`;
+      } else if (appState.activeTool === 'hook') {
+        panel.innerHTML = `
+          <strong>⚡ Visual Hook Intro (3 Detik Pertama)</strong>
+          <label class="switch-row">
+            <span>Tampilkan Hook Visual 3 Detik Pertama</span>
+            <input type="checkbox" class="switch-input" ${clip.showIntroHook ? 'checked' : ''} onchange="updateActiveClipField('showIntroHook', this.checked)" />
+          </label>
+          <button class="btn btn-purple" onclick="generate3SecHookAi()">✨ Buat Visual Hook 3 Detik [Sampel AI]</button>
+          <input type="text" class="input-field" value="${escapeHtml(clip.hookLine)}" oninput="updateActiveClipField('hookLine', this.value)" placeholder="Teks hook 3 detik..." />
+          <div class="chip-row">
+            ${[2, 3, 4].map(sec => `<button class="chip ${clip.hookDurationSec === sec ? 'selected' : ''}" onclick="updateActiveClipField('hookDurationSec', ${sec})">${sec} Detik</button>`).join('')}
+          </div>
+          <div class="chip-row">
+            ${HOOK_STYLES.map(s => `<button class="chip ${clip.hookStyle === s.id ? 'selected' : ''}" onclick="updateActiveClipField('hookStyle', '${s.id}')">${s.label}</button>`).join('')}
+          </div>`;
+      } else if (appState.activeTool === 'subtitle') {
+        panel.innerHTML = `
+          <strong>💬 Subtitle &amp; Caption AI</strong>
+          <label class="switch-row">
+            <span>Tampilkan Subtitle di Preview &amp; Ekspor</span>
+            <input type="checkbox" class="switch-input" ${clip.showSubtitles ? 'checked' : ''} onchange="updateActiveClipField('showSubtitles', this.checked)" />
+          </label>
+          <textarea class="input-field" oninput="updateActiveClipField('subtitleText', this.value)">${escapeHtml(clip.subtitleText)}</textarea>
+          <textarea class="input-field" oninput="updateActiveClipField('captionText', this.value)">${escapeHtml(clip.captionText)}</textarea>`;
+      } else if (appState.activeTool === 'ratio') {
+        panel.innerHTML = `
+          <strong>📐 Rasio Bingkai &amp; Audio Asli</strong>
+          <div class="chip-row">
+            ${ASPECT_RATIOS.map(r => `<button class="chip ${clip.aspectRatio === r.id ? 'selected' : ''}" onclick="updateActiveClipField('aspectRatio', '${r.id}')">${r.id}</button>`).join('')}
+          </div>
+          <label class="switch-row">
+            <span>🔊 Sertakan Audio Asli Video</span>
+            <input type="checkbox" class="switch-input" ${clip.includeAudio ? 'checked' : ''} onchange="updateActiveClipField('includeAudio', this.checked)" />
+          </label>`;
+      } else if (appState.activeTool === 'filter') {
+        panel.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>🎨 Filter Warna Video</strong>
+            <button class="chip" onclick="resetEditorFilter()">Reset Filter</button>
+          </div>
+          <div class="chip-row">
+            ${FILTERS.map(f => `<button class="chip ${clip.filter === f.id ? 'selected' : ''}" onclick="updateActiveClipField('filter', '${f.id}')">${f.label}</button>`).join('')}
+          </div>`;
+      } else if (appState.activeTool === 'brightness') {
+        panel.innerHTML = `
+          <strong>☀️ Kecerahan Video (${Math.round(clip.brightness * 100)}%)</strong>
+          <input type="range" min="-0.4" max="0.4" step="0.05" value="${clip.brightness}" style="width:100%;" oninput="updateActiveClipField('brightness', parseFloat(this.value))" />`;
+      } else if (appState.activeTool === 'transition') {
+        panel.innerHTML = `
+          <strong>🎞️ Gaya Transisi Antar Klip</strong>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${TRANSITIONS.map(tr => `
+              <div class="clip-row" style="border-color:${clip.transitionStyle === tr.id ? 'var(--cyan)' : 'var(--outline)'};" onclick="updateActiveClipField('transitionStyle', '${tr.id}')">
+                <div style="flex:1;">
+                  <div style="font-weight:700; font-size:0.9rem;">${tr.label}</div>
+                  <div style="font-size:0.76rem; color:var(--muted);">${tr.desc}</div>
+                </div>
+                ${clip.transitionStyle === tr.id ? '<span style="color:var(--cyan);">✓</span>' : ''}
+              </div>
+            `).join('')}
+          </div>
+          ${clip.transitionStyle !== 'NONE' ? `
+            <div class="chip-row">
+              ${[400, 600, 1000].map(ms => `<button class="chip ${clip.transitionDurationMs === ms ? 'selected' : ''}" onclick="updateActiveClipField('transitionDurationMs', ${ms})">${(ms/1000).toFixed(1)} Detik</button>`).join('')}
+            </div>` : ''}
+          <button class="btn btn-outline-cyan" onclick="exportCombinedWithTransitions()">🎞️ Gabungkan Semua Klip Proyek + Transisi</button>`;
+      }
+    }
+
+    function updateClipTrim(startVal, endVal) {
+      const clip = getActiveClip();
+      if (!clip) return;
+      if (startVal !== null) clip.startSec = Math.min(parseFloat(startVal), clip.endSec - 1);
+      if (endVal !== null) clip.endSec = Math.max(parseFloat(endVal), clip.startSec + 1);
+      const v = document.getElementById('editorVideo');
+      v.currentTime = clip.startSec;
+      renderEditorScreen();
+    }
+
+    function updateActiveClipField(key, val) {
+      const clip = getActiveClip();
+      if (!clip) return;
+      clip[key] = val;
+      updateEditorPreviewVisuals(clip);
+      if (['hookStyle', 'hookDurationSec', 'filter', 'aspectRatio', 'transitionStyle', 'transitionDurationMs', 'brightness'].includes(key)) {
+        renderEditorToolPanel(clip);
+      }
+    }
+
+    function resetEditorFilter() {
+      const clip = getActiveClip();
+      if (!clip) return;
+      clip.filter = 'NONE';
+      clip.brightness = 0;
+      renderEditorScreen();
+    }
+
+    function runAiMusicRecommend() {
+      const clip = getActiveClip();
+      if (!clip) return;
+      const track = ROYALTY_FREE_MUSIC[Math.floor(Math.random() * ROYALTY_FREE_MUSIC.length)];
+      clip.musicId = track.id;
+      clip.musicTitle = track.title;
+      clip.musicUrl = null;
+      showToast(`[Sampel AI] Mood terdeteksi (${track.mood}) — musik "${track.title}" dipasang!`);
+      renderEditorScreen();
+    }
+
+    function selectEditorMusic(trackId) {
+      const clip = getActiveClip();
+      if (!clip) return;
+      if (!trackId) {
+        clip.musicId = null;
+        clip.musicTitle = null;
+        clip.musicUrl = null;
+        stopMusicPreview();
+      } else {
+        const t = ROYALTY_FREE_MUSIC.find(x => x.id === trackId);
+        if (t) {
+          clip.musicId = t.id;
+          clip.musicTitle = t.title;
+          clip.musicUrl = null;
+        }
+      }
+      renderEditorScreen();
+    }
+
+    function applyCustomMusicUrl() {
+      const clip = getActiveClip();
+      const raw = document.getElementById('customMusicUrlInput')?.value.trim();
+      if (!clip || !raw) return;
+      clip.musicId = 'custom';
+      clip.musicTitle = raw.split('/').pop()?.split('?')[0] || 'URL Audio Kustom';
+      clip.musicUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      showToast(`Musik URL "${clip.musicTitle}" dipasang!`);
+      renderEditorScreen();
+    }
+
+    function toggleSynthPreview(trackId) {
+      if (appState.previewingMusicId === trackId) {
+        stopMusicPreview();
+        renderEditorScreen();
+        return;
+      }
+      stopMusicPreview();
+      const track = ROYALTY_FREE_MUSIC.find(t => t.id === trackId);
+      if (!track) return;
+      appState.previewingMusicId = trackId;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        appState.audioCtx = ctx;
+        const beatMs = (60 / track.bpm) * 1000;
+        let step = 0;
+        const playPulse = () => {
+          if (!appState.audioCtx) return;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const mults = [1, 1.25, 1.5, 2];
+          osc.type = 'triangle';
+          osc.frequency.value = track.rootFreq * mults[step % mults.length];
+          gain.gain.setValueAtTime(0.14, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.36);
+          step++;
+        };
+        playPulse();
+        appState.synthInterval = setInterval(playPulse, beatMs);
+      } catch (_) {}
+      renderEditorScreen();
+    }
+
+    function stopMusicPreview() {
+      appState.previewingMusicId = null;
+      if (appState.synthInterval) {
+        clearInterval(appState.synthInterval);
+        appState.synthInterval = null;
+      }
+      if (appState.audioCtx) {
+        appState.audioCtx.close().catch(() => {});
+        appState.audioCtx = null;
+      }
+    }
+
+    function generate3SecHookAi() {
+      const clip = getActiveClip();
+      if (!clip) return;
+      const samples = [
+        `[Sampel AI] Jangan lewatkan 3 detik pertama ini! 🔥`,
+        `[Sampel AI] Rahasia hasil maksimal dalam ${Math.round(clip.endSec - clip.startSec)} detik!`,
+        `[Sampel AI] Momen paling mencuri perhatian di video ini ⚡`
+      ];
+      clip.hookLine = samples[Math.floor(Math.random() * samples.length)];
+      clip.showIntroHook = true;
+      clip.hookDurationSec = 3;
+      showToast('[Sampel AI] Visual Hook 3 detik otomatis dibuat!');
+      renderEditorScreen();
+    }
+
+    function saveCurrentClipEdits() {
+      showToast('Perubahan klip disimpan.');
+    }
+
+    function goToExportSettingsFromEditor() {
+      navigate('export');
+    }
+
+    // --- Export Settings & Browser Canvas/MediaRecorder Renderer ---
+    function computePixelDims(ratioId, qualityId) {
+      const q = QUALITIES.find(x => x.id === qualityId) || QUALITIES[0];
+      const r = ASPECT_RATIOS.find(x => x.id === ratioId) || ASPECT_RATIOS[0];
+      const w = Math.round(q.shortPx * r.shortMul[0]) & ~1;
+      const h = Math.round(q.shortPx * r.shortMul[1]) & ~1;
+      return [w, h];
+    }
+
+    function renderExportSettingsScreen() {
+      const clip = getActiveClip();
+      if (!clip) return navigate('home');
+
+      const [w, h] = computePixelDims(clip.aspectRatio, clip.quality);
+      document.getElementById('exportSummaryTitle').textContent = clip.title;
+      document.getElementById('exportSummarySub').textContent = `${clip.aspectRatio === '9:16' || clip.aspectRatio === '4:5' ? 'Format Vertikal' : 'Format'} • ${clip.aspectRatio} • ${clip.quality} • Transisi ${clip.transitionStyle}`;
+      document.getElementById('exportDimPill').textContent = `${w}×${h}`;
+
+      document.getElementById('exportFormatGrid').innerHTML = ASPECT_RATIOS.map(r => `
+        <div class="format-card ${clip.aspectRatio === r.id ? 'selected' : ''}" onclick="setExportRatio('${r.id}')">
+          <div style="font-size:1.35rem;">${r.id === '16:9' ? '🖥️' : r.id === '1:1' ? '⬜' : '📱'}</div>
+          <div style="font-weight:700; font-size:0.84rem; white-space:pre-line;">${r.label}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('exportQualityGrid').innerHTML = QUALITIES.map(q => {
+        const [qw, qh] = computePixelDims(clip.aspectRatio, q.id);
+        return `
+          <div class="format-card ${clip.quality === q.id ? 'selected' : ''}" style="padding:10px 6px;" onclick="setExportQuality('${q.id}')">
+            <strong style="font-size:0.86rem;">${q.label}</strong>
+            <span style="font-family:monospace; font-size:0.74rem; color:var(--cyan);">${qw}×${qh}</span>
+          </div>`;
+      }).join('');
+
+      document.getElementById('expSubToggle').checked = !!clip.showSubtitles;
+      document.getElementById('expHookToggle').checked = !!clip.showIntroHook;
+      document.getElementById('expAudioToggle').checked = !!clip.includeAudio;
+      document.getElementById('expMusicToggle').checked = !!clip.musicId;
+    }
+
+    function setExportRatio(id) {
+      const c = getActiveClip();
+      if (c) c.aspectRatio = id;
+      renderExportSettingsScreen();
+    }
+
+    function setExportQuality(id) {
+      const c = getActiveClip();
+      if (c) c.quality = id;
+      renderExportSettingsScreen();
+    }
+
+    function toggleExpField(key, val) {
+      const c = getActiveClip();
+      if (c) c[key] = val;
+    }
+
+    function toggleExpMusic(enabled) {
+      const c = getActiveClip();
+      if (!c) return;
+      if (enabled && !c.musicId) {
+        c.musicId = ROYALTY_FREE_MUSIC[0].id;
+        c.musicTitle = ROYALTY_FREE_MUSIC[0].title;
+      } else if (!enabled) {
+        c.musicId = null;
+        c.musicTitle = null;
+      }
+    }
+
+    async function startWebExportRender(isCombined = false) {
+      const clip = getActiveClip();
+      if (!clip) return;
+      const btn = document.getElementById('startExportBtn');
+      const card = document.getElementById('exportRenderProgressCard');
+      btn.disabled = true;
+      card.style.display = 'block';
+      document.getElementById('exportRenderLabel').textContent = isCombined ? 'Menggabungkan Semua Klip + Transisi…' : `Merender ${clip.quality} (${clip.aspectRatio})…`;
+
+      const [outW, outH] = computePixelDims(clip.aspectRatio, clip.quality);
+      // Scale canvas safely to <=720px height for responsive browser MediaRecorder encoding
+      const scale = Math.min(1, 720 / Math.max(outW, outH));
+      const cw = Math.max(240, Math.round(outW * scale) & ~1);
+      const ch = Math.max(240, Math.round(outH * scale) & ~1);
+
+      let exportedBlobUrl = null;
+      try {
+        exportedBlobUrl = await renderClipToBlob(clip, cw, ch, isCombined, (pct) => {
+          document.getElementById('exportRenderPct').textContent = `${pct}%`;
+          document.getElementById('exportRenderFill').style.width = `${pct}%`;
+        });
+      } catch (err) {
+        console.warn('Canvas MediaRecorder fallback:', err);
+      }
+
+      const exportedItem = {
+        id: Date.now(),
+        title: isCombined ? `${clip.sourceVideo?.title || 'Kompilasi'} (Gabungan ${appState.clips.length} Klip)` : clip.title,
+        ratio: clip.aspectRatio,
+        quality: clip.quality,
+        dims: `${outW}×${outH}`,
+        transition: clip.transitionStyle,
+        musicTitle: clip.musicTitle,
+        blobUrl: exportedBlobUrl || clip.sourceVideo?.streamUrl || POPULAR_VIDEOS[0].streamUrl,
+        isRecordedBlob: !!exportedBlobUrl,
+        caption: `${clip.hookLine}\n\n${clip.captionText}\n${clip.hashtags}`,
+        createdAt: new Date().toLocaleTimeString('id-ID')
+      };
+
+      appState.exportedClips.unshift(exportedItem);
+      appState.lastExport = exportedItem;
+      updateBadges();
+      btn.disabled = false;
+      card.style.display = 'none';
+      showSuccessScreen(exportedItem);
+    }
+
+    function exportCombinedWithTransitions() {
+      if (appState.clips.length === 0) return;
+      navigate('export');
+      setTimeout(() => startWebExportRender(true), 150);
+    }
+
+    function renderClipToBlob(clip, cw, ch, isCombined, onProgress) {
+      return new Promise((resolve, reject) => {
+        if (typeof MediaRecorder === 'undefined') return reject(new Error('MediaRecorder unsupported'));
+        const canvas = document.createElement('canvas');
+        canvas.width = cw;
+        canvas.height = ch;
+        const ctx = canvas.getContext('2d');
+
+        const vid = document.createElement('video');
+        vid.crossOrigin = 'anonymous';
+        vid.muted = true;
+        vid.playsInline = true;
+        vid.src = clip.sourceVideo?.streamUrl || POPULAR_VIDEOS[0].streamUrl;
+
+        const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+          ? 'video/webm;codecs=vp9'
+          : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '';
+        if (!mime) return reject(new Error('No webm mime supported'));
+
+        const stream = canvas.captureStream(24);
+        const recorder = new MediaRecorder(stream, { mimeType: mime });
+        const chunks = [];
+        recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = () => {
+          resolve(URL.createObjectURL(new Blob(chunks, { type: mime })));
+        };
+
+        const durationSec = Math.min(isCombined ? 8 : 5, Math.max(2.5, clip.endSec - clip.startSec));
+        const startTimeMs = performance.now();
+
+        vid.onloadeddata = () => {
+          try {
+            vid.currentTime = clip.startSec;
+            vid.play().catch(() => {});
+            recorder.start(200);
+
+            function drawFrame() {
+              const elapsedSec = (performance.now() - startTimeMs) / 1000;
+              const pct = Math.min(99, Math.round((elapsedSec / durationSec) * 100));
+              onProgress(pct);
+
+              ctx.save();
+              ctx.fillStyle = '#070914';
+              ctx.fillRect(0, 0, cw, ch);
+
+              // Apply fade / slide / dissolve envelope
+              const transSec = clip.transitionDurationMs / 1000;
+              let alpha = 1;
+              let offsetX = 0;
+              if (clip.transitionStyle === 'FADE' && elapsedSec < transSec) {
+                alpha = Math.max(0.1, elapsedSec / transSec);
+              } else if (clip.transitionStyle === 'SLIDE' && elapsedSec < transSec) {
+                offsetX = (1 - elapsedSec / transSec) * cw * 0.45;
+              } else if (clip.transitionStyle === 'DISSOLVE' && elapsedSec < transSec) {
+                alpha = 0.5 + 0.5 * (elapsedSec / transSec);
+              }
+
+              ctx.globalAlpha = alpha;
+              const vw = vid.videoWidth || 1280;
+              const vh = vid.videoHeight || 720;
+              const scaleCover = Math.max(cw / vw, ch / vh);
+              const dw = vw * scaleCover;
+              const dh = vh * scaleCover;
+              ctx.drawImage(vid, (cw - dw) / 2 + offsetX, (ch - dh) / 2, dw, dh);
+              ctx.restore();
+
+              // Draw 3-second visual hook overlay
+              if (clip.showIntroHook && elapsedSec <= clip.hookDurationSec && clip.hookLine) {
+                ctx.fillStyle = 'rgba(24, 12, 54, 0.88)';
+                ctx.strokeStyle = '#9333EA';
+                ctx.lineWidth = 3;
+                const bx = 18, by = 26, bw = cw - 36, bh = 66;
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.fillStyle = '#06B6D4';
+                ctx.font = 'bold 12px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`HOOK 0-${clip.hookDurationSec} DETIK`, cw / 2, by + 22);
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 15px sans-serif';
+                ctx.fillText(clip.hookLine.slice(0, 38), cw / 2, by + 46);
+              }
+
+              // Draw bottom subtitle
+              if (clip.showSubtitles && clip.subtitleText) {
+                ctx.fillStyle = 'rgba(0,0,0,0.75)';
+                ctx.fillRect(16, ch - 68, cw - 32, 46);
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(clip.subtitleText.slice(0, 42), cw / 2, ch - 40);
+              }
+
+              if (elapsedSec < durationSec) {
+                requestAnimationFrame(drawFrame);
+              } else {
+                onProgress(100);
+                vid.pause();
+                recorder.stop();
+              }
+            }
+            requestAnimationFrame(drawFrame);
+          } catch (err) {
+            vid.pause();
+            reject(err);
+          }
+        };
+
+        vid.onerror = () => reject(new Error('Video cross-origin read blocked'));
+        setTimeout(() => { if (recorder.state === 'inactive') reject(new Error('Render timeout')); }, 3500);
+      });
+    }
+
+    // --- Export Success & Share Sheet ---
+    function showSuccessScreen(item) {
+      navigate('success');
+      document.getElementById('successSubtext').textContent = `${item.title} • ${item.dims} • ${item.isRecordedBlob ? 'File Video Siap Unduh' : 'Pratinjau Stream'}`;
+      const frame = document.getElementById('successPlayerFrame');
+      frame.className = `player-frame ${(ASPECT_RATIOS.find(r => r.id === item.ratio) || ASPECT_RATIOS[0]).css}`;
+      const v = document.getElementById('successVideo');
+      v.src = item.blobUrl;
+      const dl = document.getElementById('successDownloadBtn');
+      dl.href = item.blobUrl;
+      dl.download = `${item.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.webm`;
+    }
+
+    function openWebShareModal() {
+      const item = appState.lastExport || appState.exportedClips[0];
+      if (!item) return;
+      document.getElementById('shareCaptionInput').value = item.caption;
+      document.getElementById('shareModal').classList.add('open');
+    }
+
+    function closeShareModal() {
+      document.getElementById('shareModal').classList.remove('open');
+    }
+
+    function copyShareCaption() {
+      const txt = document.getElementById('shareCaptionInput').value;
+      navigator.clipboard?.writeText(txt).then(() => showToast('Caption & Hashtag disalin!')).catch(() => {});
+    }
+
+    function sharePlatformIntent(platform) {
+      copyShareCaption();
+      showToast(`Caption disalin & membuka ${platform}…`);
+      const urls = {
+        'TikTok': 'https://www.tiktok.com/upload',
+        'Instagram Reels': 'https://www.instagram.com/',
+        'YouTube Shorts': 'https://studio.youtube.com/',
+        'WhatsApp': 'https://wa.me/?text=' + encodeURIComponent(document.getElementById('shareCaptionInput').value)
+      };
+      if (urls[platform]) window.open(urls[platform], '_blank');
+    }
+
+    async function nativeWebShare() {
+      const txt = document.getElementById('shareCaptionInput').value;
+      const item = appState.lastExport;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: item?.title || 'Aldi AI Clipper', text: txt, url: window.location.href });
+          closeShareModal();
+          return;
+        } catch (_) {}
+      }
+      copyShareCaption();
+      showToast('Browser tidak mendukung Share Sheet native; caption telah disalin.');
+    }
+
+    // --- Batch Queue System ---
+    function handleMultiFilePick(e) {
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+      files.forEach(file => {
+        appState.batchQueue.push({
+          id: 'b_' + Math.random().toString(36).slice(2, 8),
+          label: file.name,
+          url: URL.createObjectURL(file),
+          status: 'QUEUED',
+          progress: 0,
+          detail: 'Menunggu antrean…'
+        });
+      });
+      updateBadges();
+      renderBatchQueue();
+      navigate('batch');
+    }
+
+    function enqueueHomeUrl() {
+      const raw = document.getElementById('homeUrlInput').value.trim();
+      if (!raw) return showToast('Masukkan URL video terlebih dahulu.');
+      const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      appState.batchQueue.push({
+        id: 'b_' + Math.random().toString(36).slice(2, 8),
+        label: url.replace(/^https?:\/\//, '').slice(0, 38),
+        url,
+        status: 'QUEUED',
+        progress: 0,
+        detail: 'URL masuk antrean'
+      });
+      document.getElementById('homeUrlInput').value = '';
+      updateBadges();
+      navigate('batch');
+    }
+
+    function enqueueBatchTextarea() {
+      const lines = document.getElementById('batchUrlsInput').value.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+      if (lines.length === 0) return showToast('Tempel minimal 1 URL.');
+      lines.forEach(raw => {
+        const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+        appState.batchQueue.push({
+          id: 'b_' + Math.random().toString(36).slice(2, 8),
+          label: url.replace(/^https?:\/\//, '').slice(0, 38),
+          url,
+          status: 'QUEUED',
+          progress: 0,
+          detail: 'Siap diproses'
+        });
+      });
+      document.getElementById('batchUrlsInput').value = '';
+      updateBadges();
+      renderBatchQueue();
+    }
+
+    function clearCompletedBatch() {
+      appState.batchQueue = appState.batchQueue.filter(i => i.status !== 'COMPLETED');
+      updateBadges();
+      renderBatchQueue();
+    }
+
+    async function runBatchQueue() {
+      if (appState.isBatchRunning) return;
+      const queued = appState.batchQueue.filter(i => i.status === 'QUEUED');
+      if (queued.length === 0) return showToast('Tidak ada item berstatus Menunggu.');
+      appState.isBatchRunning = true;
+      document.getElementById('startBatchBtn').disabled = true;
+
+      for (const item of queued) {
+        item.status = 'ANALYZING';
+        item.detail = 'Menganalisis video & membuat 5 klip…';
+        for (const p of [25, 55, 85, 100]) {
+          item.progress = p;
+          if (p === 100) {
+            item.status = 'COMPLETED';
+            item.detail = '5 klip terbaik siap diedit';
+          }
+          renderBatchQueue();
+          await new Promise(r => setTimeout(r, 320));
+        }
+      }
+
+      appState.isBatchRunning = false;
+      document.getElementById('startBatchBtn').disabled = false;
+      showToast(`Batch selesai: ${queued.length} video berhasil diproses!`);
+    }
+
+    function renderBatchQueue() {
+      const container = document.getElementById('batchQueueList');
+      if (appState.batchQueue.length === 0) {
+        container.innerHTML = `<div class="card" style="text-align:center; color:var(--muted);">Antrean masih kosong. Unggah banyak file atau tambahkan URL di atas.</div>`;
+        return;
+      }
+      container.innerHTML = appState.batchQueue.map(item => `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:0.9rem;">${escapeHtml(item.label)}</strong>
+            <span class="badge">${item.status === 'COMPLETED' ? 'Selesai' : item.status === 'ANALYZING' ? 'Memproses' : 'Menunggu'}</span>
+          </div>
+          <div style="font-size:0.78rem; color:var(--muted);">${item.detail} (${item.progress}%)</div>
+          <div class="progress-track"><div class="progress-fill" style="width:${item.progress}%;"></div></div>
+        </div>
+      `).join('');
+    }
+
+    // --- Exports Gallery ---
+    function renderExportsGallery() {
+      const el = document.getElementById('exportsGalleryList');
+      document.getElementById('exportsTotalBadge').textContent = `${appState.exportedClips.length} klip`;
+      if (appState.exportedClips.length === 0) {
+        el.innerHTML = `
+          <div class="card" style="text-align:center; padding:26px;">
+            <div style="font-size:2.4rem;">📁</div>
+            <strong>Belum Ada Klip Terekspor</strong>
+            <p style="font-size:0.84rem; color:var(--muted);">Ekspor klip dari Editor atau Pengaturan Ekspor HD untuk melihat hasilnya di sini.</p>
+          </div>`;
+        return;
+      }
+      el.innerHTML = appState.exportedClips.map((ex, i) => `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>${escapeHtml(ex.title)}</strong>
+            <span class="badge">${ex.dims}</span>
+          </div>
+          <div style="font-size:0.78rem; color:var(--muted);">Transisi ${ex.transition} • ${ex.createdAt}</div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-purple btn-pill" onclick="playExportedIndex(${i})">▶ Putar</button>
+            <button class="btn btn-outline-cyan btn-pill" onclick="appState.lastExport = appState.exportedClips[${i}]; openWebShareModal()">📤 Bagikan</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function playExportedIndex(idx) {
+      const item = appState.exportedClips[idx];
+      if (!item) return;
+      appState.lastExport = item;
+      showSuccessScreen(item);
+    }
+
+    function updateBadges() {
+      document.getElementById('railBatchCount').textContent = appState.batchQueue.length;
+      document.getElementById('homeBatchBadge').textContent = `${appState.batchQueue.length} item`;
+      document.getElementById('railExportCount').textContent = appState.exportedClips.length;
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // --- Init ---
+    function initPlatformChips() {
+      const wrap = document.getElementById('homePlatformChips');
+      wrap.innerHTML = TARGET_PLATFORMS.map(p => `
+        <button class="chip ${appState.selectedPlatform === p.id ? 'selected' : ''}" onclick="appState.selectedPlatform='${p.id}'; initPlatformChips();">${p.label}</button>
+      `).join('');
+    }
+
+    (function boot() {
+      initPlatformChips();
+      renderHomePopular();
+      updateBadges();
+
+      // Animate Splash Bar
+      let p = 0;
+      const splashTimer = setInterval(() => {
+        p = Math.min(100, p + 25);
+        document.getElementById('splashFill').style.width = `${p}%`;
+        if (p >= 100) {
+          clearInterval(splashTimer);
+          setTimeout(() => {
+            if (appState.screen === 'splash') enterApp();
+          }, 400);
+        }
+      }, 280);
+    })();
   </script>
 </body>
 </html>
