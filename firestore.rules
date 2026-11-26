@@ -1,0 +1,343 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default deny everything unless explicitly matched below
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Security Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidAspectRatio(val) {
+      return val is string && val in ['VERTICAL_9_16', 'PORTRAIT_4_5', 'SQUARE_1_1', 'LANDSCAPE_16_9'];
+    }
+
+    function isValidPlatform(val) {
+      return val is string && val in ['REELS_TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_FEED', 'SQUARE_POST', 'HIGHLIGHT_WIDE'];
+    }
+
+    function isValidTone(val) {
+      return val is string && val in ['ENERGETIC', 'PROFESSIONAL', 'HUMOROUS', 'EDUCATIONAL'];
+    }
+
+    function isValidFilter(val) {
+      return val is string && val in ['NONE', 'GRAYSCALE', 'SEPIA', 'VIVID', 'WARM', 'COOL'];
+    }
+
+    function isValidHookStyle(val) {
+      return val is string && val in ['NEON_BADGE', 'CYBER_BANNER', 'MINIMAL_BOLD'];
+    }
+
+    function isValidTransition(val) {
+      return val is string && val in ['NONE', 'FADE', 'SLIDE', 'DISSOLVE'];
+    }
+
+    function isValidQuality(val) {
+      return val is string && val in ['HD_1080P', 'HD_720P', 'SD_480P'];
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidUserProfile(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.userId == request.auth.uid &&
+             data.displayName is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 120 &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 160)) &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidCloudClipProject(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.userId == request.auth.uid &&
+             data.localProjectId is int &&
+             data.localProjectId >= 0 &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 200 &&
+             data.sourceUri is string &&
+             data.sourceUri.size() >= 1 &&
+             data.sourceUri.size() <= 1000 &&
+             data.durationMs is int &&
+             data.durationMs >= 0 &&
+             data.durationMs <= 86400000 &&
+             data.width is int &&
+             data.width >= 0 &&
+             data.width <= 16384 &&
+             data.height is int &&
+             data.height >= 0 &&
+             data.height <= 16384 &&
+             isValidPlatform(data.targetPlatform) &&
+             data.focusTopic is string &&
+             data.focusTopic.size() <= 200 &&
+             (!('sourcePlatformName' in data) || (data.sourcePlatformName is string && data.sourcePlatformName.size() <= 80)) &&
+             (!('authorName' in data) || (data.authorName is string && data.authorName.size() <= 120)) &&
+             (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 1000)) &&
+             data.hasPlayableStream is bool &&
+             data.placeholderAi is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidCloudClipSegment(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.userId == request.auth.uid &&
+             isValidId(data.projectCloudId) &&
+             data.localProjectId is int &&
+             data.localProjectId >= 0 &&
+             data.localSegmentId is int &&
+             data.localSegmentId >= 0 &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 200 &&
+             data.hookLine is string &&
+             data.hookLine.size() <= 300 &&
+             data.viralScore is int &&
+             data.viralScore >= 0 &&
+             data.viralScore <= 100 &&
+             data.rationale is string &&
+             data.rationale.size() <= 800 &&
+             data.captionText is string &&
+             data.captionText.size() <= 1500 &&
+             data.hashtags is string &&
+             data.hashtags.size() <= 400 &&
+             data.startMs is int &&
+             data.startMs >= 0 &&
+             data.startMs <= 86400000 &&
+             data.endMs is int &&
+             data.endMs >= 0 &&
+             data.endMs <= 86400000 &&
+             isValidAspectRatio(data.aspectRatio) &&
+             isValidTone(data.tone) &&
+             isValidFilter(data.videoFilter) &&
+             data.brightness is number &&
+             data.brightness >= -1.0 &&
+             data.brightness <= 1.0 &&
+             data.showSubtitles is bool &&
+             data.showIntroHook is bool &&
+             data.hookDurationMs is int &&
+             data.hookDurationMs >= 500 &&
+             data.hookDurationMs <= 10000 &&
+             isValidHookStyle(data.hookOverlayStyle) &&
+             isValidTransition(data.transitionStyle) &&
+             data.transitionDurationMs is int &&
+             data.transitionDurationMs >= 100 &&
+             data.transitionDurationMs <= 3000 &&
+             data.includeAudio is bool &&
+             (!('selectedMusicTrackId' in data) || (data.selectedMusicTrackId is string && data.selectedMusicTrackId.size() <= 120)) &&
+             (!('selectedMusicTitle' in data) || (data.selectedMusicTitle is string && data.selectedMusicTitle.size() <= 200)) &&
+             (!('selectedMusicUrl' in data) || (data.selectedMusicUrl is string && data.selectedMusicUrl.size() <= 1000)) &&
+             data.musicVolume is number &&
+             data.musicVolume >= 0.0 &&
+             data.musicVolume <= 1.0 &&
+             (!('audioMoodLabel' in data) || (data.audioMoodLabel is string && data.audioMoodLabel.size() <= 80)) &&
+             (!('audioBpm' in data) || (data.audioBpm is int && data.audioBpm >= 30 && data.audioBpm <= 300)) &&
+             isValidQuality(data.exportQuality) &&
+             data.favorite is bool &&
+             data.placeholderAi is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidCloudExportedClip(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.userId == request.auth.uid &&
+             isValidId(data.projectCloudId) &&
+             data.localExportId is int &&
+             data.localExportId >= 0 &&
+             data.localProjectId is int &&
+             data.localProjectId >= 0 &&
+             data.localSegmentId is int &&
+             data.localSegmentId >= 0 &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 200 &&
+             data.filePath is string &&
+             data.filePath.size() >= 1 &&
+             data.filePath.size() <= 1000 &&
+             data.durationMs is int &&
+             data.durationMs >= 0 &&
+             data.durationMs <= 86400000 &&
+             data.fileSizeBytes is int &&
+             data.fileSizeBytes >= 0 &&
+             isValidAspectRatio(data.aspectRatio) &&
+             (!('galleryUri' in data) || (data.galleryUri is string && data.galleryUri.size() <= 1000)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // 4. Collection Rules
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+
+      allow create: if isValidId(userId) &&
+                       isOwner(userId) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'photoUrl', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming(), userId);
+
+      allow update: if isValidId(userId) &&
+                       isOwner(userId) &&
+                       isValidUserProfile(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'updatedAt']);
+
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      match /projects/{projectId} {
+        allow get: if isValidId(userId) && isValidId(projectId) && isOwner(userId);
+        allow list: if isOwner(userId);
+
+        allow create: if isValidId(userId) &&
+                         isValidId(projectId) &&
+                         isOwner(userId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'localProjectId', 'title', 'sourceUri', 'durationMs',
+                           'width', 'height', 'targetPlatform', 'focusTopic',
+                           'hasPlayableStream', 'placeholderAi', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'localProjectId', 'title', 'sourceUri', 'durationMs',
+                           'width', 'height', 'targetPlatform', 'focusTopic',
+                           'sourcePlatformName', 'authorName', 'thumbnailUrl',
+                           'hasPlayableStream', 'placeholderAi', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidCloudClipProject(incoming(), userId);
+
+        allow update: if isValidId(userId) &&
+                         isValidId(projectId) &&
+                         isOwner(userId) &&
+                         isValidCloudClipProject(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'localProjectId', 'title', 'sourceUri', 'durationMs',
+                           'width', 'height', 'targetPlatform', 'focusTopic',
+                           'sourcePlatformName', 'authorName', 'thumbnailUrl',
+                           'hasPlayableStream', 'placeholderAi', 'updatedAt'
+                         ]);
+
+        allow delete: if isValidId(userId) && isValidId(projectId) && isOwner(userId);
+      }
+
+      match /segments/{segmentId} {
+        allow get: if isValidId(userId) && isValidId(segmentId) && isOwner(userId);
+        allow list: if isOwner(userId);
+
+        allow create: if isValidId(userId) &&
+                         isValidId(segmentId) &&
+                         isOwner(userId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'projectCloudId', 'localProjectId', 'localSegmentId',
+                           'title', 'hookLine', 'viralScore', 'rationale', 'captionText',
+                           'hashtags', 'startMs', 'endMs', 'aspectRatio', 'tone',
+                           'videoFilter', 'brightness', 'showSubtitles', 'showIntroHook',
+                           'hookDurationMs', 'hookOverlayStyle', 'transitionStyle',
+                           'transitionDurationMs', 'includeAudio', 'musicVolume',
+                           'exportQuality', 'favorite', 'placeholderAi', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'projectCloudId', 'localProjectId', 'localSegmentId',
+                           'title', 'hookLine', 'viralScore', 'rationale', 'captionText',
+                           'hashtags', 'startMs', 'endMs', 'aspectRatio', 'tone',
+                           'videoFilter', 'brightness', 'showSubtitles', 'showIntroHook',
+                           'hookDurationMs', 'hookOverlayStyle', 'transitionStyle',
+                           'transitionDurationMs', 'includeAudio',
+                           'selectedMusicTrackId', 'selectedMusicTitle', 'selectedMusicUrl',
+                           'musicVolume', 'audioMoodLabel', 'audioBpm',
+                           'exportQuality', 'favorite', 'placeholderAi', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidCloudClipSegment(incoming(), userId) &&
+                         existsAfter(/databases/$(database)/documents/users/$(userId)/projects/$(incoming().projectCloudId));
+
+        allow update: if isValidId(userId) &&
+                         isValidId(segmentId) &&
+                         isOwner(userId) &&
+                         isValidCloudClipSegment(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().projectCloudId == existing().projectCloudId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'localProjectId', 'localSegmentId',
+                           'title', 'hookLine', 'viralScore', 'rationale', 'captionText',
+                           'hashtags', 'startMs', 'endMs', 'aspectRatio', 'tone',
+                           'videoFilter', 'brightness', 'showSubtitles', 'showIntroHook',
+                           'hookDurationMs', 'hookOverlayStyle', 'transitionStyle',
+                           'transitionDurationMs', 'includeAudio',
+                           'selectedMusicTrackId', 'selectedMusicTitle', 'selectedMusicUrl',
+                           'musicVolume', 'audioMoodLabel', 'audioBpm',
+                           'exportQuality', 'favorite', 'placeholderAi', 'updatedAt'
+                         ]);
+
+        allow delete: if isValidId(userId) && isValidId(segmentId) && isOwner(userId);
+      }
+
+      match /exports/{exportId} {
+        allow get: if isValidId(userId) && isValidId(exportId) && isOwner(userId);
+        allow list: if isOwner(userId);
+
+        allow create: if isValidId(userId) &&
+                         isValidId(exportId) &&
+                         isOwner(userId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'projectCloudId', 'localExportId', 'localProjectId',
+                           'localSegmentId', 'title', 'filePath', 'durationMs',
+                           'fileSizeBytes', 'aspectRatio', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'projectCloudId', 'localExportId', 'localProjectId',
+                           'localSegmentId', 'title', 'filePath', 'durationMs',
+                           'fileSizeBytes', 'aspectRatio', 'galleryUri', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidCloudExportedClip(incoming(), userId) &&
+                         existsAfter(/databases/$(database)/documents/users/$(userId)/projects/$(incoming().projectCloudId));
+
+        allow update: if isValidId(userId) &&
+                         isValidId(exportId) &&
+                         isOwner(userId) &&
+                         isValidCloudExportedClip(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().projectCloudId == existing().projectCloudId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'localExportId', 'localProjectId', 'localSegmentId',
+                           'title', 'filePath', 'durationMs', 'fileSizeBytes',
+                           'aspectRatio', 'galleryUri', 'updatedAt'
+                         ]);
+
+        allow delete: if isValidId(userId) && isValidId(exportId) && isOwner(userId);
+      }
+    }
+  }
+}

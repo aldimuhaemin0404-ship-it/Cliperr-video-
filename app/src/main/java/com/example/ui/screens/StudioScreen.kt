@@ -31,10 +31,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FolderOpen
@@ -103,6 +108,7 @@ import com.example.ui.components.SocialLinkPreviewCard
 import com.example.ui.components.VideoFilterControlsCard
 import com.example.ui.components.formatDurationShort
 import com.example.ui.components.formatTimecode
+import com.example.ui.state.CloudSyncUiState
 import com.example.ui.state.StudioUiState
 import com.example.ui.theme.ActionButtonGradient
 import com.example.ui.theme.BrandNeonGradient
@@ -145,6 +151,9 @@ fun StudioScreen(
     onOpenProject: (Long) -> Unit,
     onDeleteProject: (Long) -> Unit,
     onOpenWebStudio: () -> Unit = {},
+    userDisplayName: String? = null,
+    cloudSyncState: CloudSyncUiState = CloudSyncUiState.Synced(0),
+    onSignOut: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedLinkHint by remember { mutableStateOf("https://youtu.be/... atau https://vt.tiktok.com/...") }
@@ -195,6 +204,16 @@ fun StudioScreen(
         ) {
             item {
                 HomeTopHeader(onOpenWebStudio = onOpenWebStudio)
+            }
+
+            if (userDisplayName != null) {
+                item {
+                    CloudAccountStatusBar(
+                        displayName = userDisplayName,
+                        cloudSyncState = cloudSyncState,
+                        onSignOut = onSignOut
+                    )
+                }
             }
 
             item {
@@ -415,6 +434,113 @@ private fun HomeTopHeader(
                     text = stringResource(R.string.home_open_web_studio),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudAccountStatusBar(
+    displayName: String,
+    cloudSyncState: CloudSyncUiState,
+    onSignOut: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = CosmicSurface,
+        border = BorderStroke(
+            1.dp,
+            when (cloudSyncState) {
+                is CloudSyncUiState.Error -> MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                else -> CosmicOutline.copy(alpha = 0.75f)
+            }
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("cloud_account_status_bar")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AccountCircle,
+                    contentDescription = displayName,
+                    tint = FuturisticCyan,
+                    modifier = Modifier.size(22.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = displayName,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        val (syncIcon, syncColor, syncText) = when (cloudSyncState) {
+                            is CloudSyncUiState.Loading -> Triple(
+                                Icons.Filled.CloudSync,
+                                StudioAmber,
+                                "Menyinkronkan Cloud Firestore…"
+                            )
+                            is CloudSyncUiState.Synced -> Triple(
+                                Icons.Filled.CloudDone,
+                                FuturisticCyan,
+                                "${stringResource(R.string.cloud_sync_active)} • ${cloudSyncState.cloudProjectsCount} proyek"
+                            )
+                            is CloudSyncUiState.Error -> Triple(
+                                Icons.Filled.CloudOff,
+                                MaterialTheme.colorScheme.error,
+                                cloudSyncState.message
+                            )
+                        }
+                        Icon(
+                            imageVector = syncIcon,
+                            contentDescription = null,
+                            tint = syncColor,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = syncText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = syncColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            TextButton(
+                onClick = onSignOut,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .testTag("sign_out_button")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = stringResource(R.string.account_sign_out),
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.account_sign_out),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White.copy(alpha = 0.9f)
                 )
             }
         }

@@ -9,10 +9,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.transformer.Transformer
 import com.example.data.ai.AiClipperRepository
-import com.example.data.ai.PlaceholderAiClipperRepository
+import com.example.data.ai.FirebaseAiClipperRepository
+import com.example.data.firebase.CloudClipProject
+import com.example.data.firebase.FirestoreClipRepository
 import com.example.data.local.AppDatabase
 import com.example.data.local.ClipProjectRepository
 import com.example.data.network.SocialLinkResolver
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.example.domain.model.AspectRatioPreset
 import com.example.domain.model.AudioAnalysisSummary
 import com.example.domain.model.BatchItemStatus
@@ -46,8 +51,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -90,16 +97,26 @@ data class EditorUiState(
     val hookRationale: String? = null,
     val previewingTrackId: String? = null,
     val previewTrackUri: Uri? = null,
-    val isPlaceholderAi: Boolean = true,
+    val isPlaceholderAi: Boolean = false,
     val errorMessage: String? = null
 )
 
+sealed interface CloudSyncUiState {
+    data object Loading : CloudSyncUiState
+    data class Synced(val cloudProjectsCount: Int) : CloudSyncUiState
+    data class Error(val message: String) : CloudSyncUiState
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
-class ClipperViewModel(application: Application) : AndroidViewModel(application) {
+class ClipperViewModel(
+    application: Application,
+    private val currentUserId: String? = null,
+    private val firestoreRepository: FirestoreClipRepository? = null,
+    private val aiRepository: AiClipperRepository = FirebaseAiClipperRepository()
+) : AndroidViewModel(application) {
 
     private val database = AppDatabase.getInstance(application)
     private val projectRepository = ClipProjectRepository(database.clipDao())
-    private val aiRepository: AiClipperRepository = PlaceholderAiClipperRepository()
     private val mediaProcessor = VideoMediaProcessor(application)
     private val socialLinkResolver = SocialLinkResolver()
 
@@ -163,6 +180,30 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
     private var activeTransformer: Transformer? = null
     private var activeBatchTransformer: Transformer? = null
 
+    val cloudSyncState: StateFlow<CloudSyncUiState> =
+        if (currentUserId != null && firestoreRepository != null) {
+            firestoreRepository.observeCloudProjects(currentUserId)
+                .map<List<CloudClipProject>, CloudSyncUiState> { list ->
+                    CloudSyncUiState.Synced(list.size)
+                }
+                .catch { error ->
+                    val firestoreError = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (firestoreError == null && error is CancellationException) throw error
+                    val rootError = firestoreError ?: error
+                    Log.w(TAG, "Error observing cloud projects", rootError)
+                    emit(CloudSyncUiState.Error(rootError.localizedMessage ?: "Gagal sinkronisasi Cloud Firestore"))
+                }
+                .stateIn(
+                    scope = viewModelScope,
+                    started = SharingStarted.WhileSubscribed(5_000L),
+                    initialValue = CloudSyncUiState.Loading
+                )
+        } else {
+            MutableStateFlow(CloudSyncUiState.Synced(0)).asStateFlow()
+        }
+
     init {
         viewModelScope.launch {
             projects.collect { list ->
@@ -173,6 +214,81 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+        startCloudSyncPipeline()
+    }
+
+    private fun startCloudSyncPipeline() {
+        val uid = currentUserId ?: return
+        val repo = firestoreRepository ?: return
+        viewModelScope.launch {
+            Firebase.auth.currentUser?.takeIf { it.uid == uid }?.let { user ->
+                repo.syncUserProfile(user)
+            }
+        }
+        viewModelScope.launch {
+            runCatching {
+                repo.observeCloudProjects(uid).collect { cloudProjects ->
+                    cloudProjects.forEach { cloud ->
+                        projectRepository.restoreProjectFromCloud(cloud.toDomain())
+                    }
+                }
+            }.onFailure { err ->
+                if (err is CancellationException) throw err
+                Log.w(TAG, "Cloud project restore error", err)
+            }
+        }
+        viewModelScope.launch {
+            runCatching {
+                repo.observeCloudSegments(uid).collect { cloudSegments ->
+                    cloudSegments.forEach { cloudSeg ->
+                        projectRepository.restoreSegmentFromCloud(cloudSeg.toDomain())
+                    }
+                }
+            }.onFailure { err ->
+                if (err is CancellationException) throw err
+                Log.w(TAG, "Cloud segment restore error", err)
+            }
+        }
+        viewModelScope.launch {
+            runCatching {
+                repo.observeCloudExports(uid).collect { cloudExports ->
+                    val existingIds = exportedClips.value.map { it.id }.toSet()
+                    cloudExports.forEach { cloudExp ->
+                        projectRepository.restoreExportFromCloud(cloudExp.toDomain(), existingIds)
+                    }
+                }
+            }.onFailure { err ->
+                if (err is CancellationException) throw err
+                Log.w(TAG, "Cloud export restore error", err)
+            }
+        }
+    }
+
+    private fun syncProjectSnapshotToCloud(projectId: Long) {
+        val repo = firestoreRepository ?: return
+        viewModelScope.launch {
+            val savedProj = projectRepository.getProject(projectId) ?: return@launch
+            val savedSegs = projectRepository.getSegmentsForProject(projectId)
+            repo.syncProjectWithSegments(savedProj, savedSegs)
+        }
+    }
+
+    private fun syncSegmentUpdateToCloud(segment: ClipSegment) {
+        val repo = firestoreRepository ?: return
+        viewModelScope.launch {
+            val parentProj = projectRepository.getProject(segment.projectId)
+            repo.upsertSegment(segment, parentProj)
+        }
+    }
+
+    fun prepareForSignOut() {
+        activeTransformer?.cancel()
+        activeBatchTransformer?.cancel()
+        activeExportJob?.cancel()
+        activeAnalysisJob?.cancel()
+        activeBatchJob?.cancel()
+        activeTransformer = null
+        activeBatchTransformer = null
     }
 
     fun updateImportSource(source: StudioImportSource) {
@@ -412,6 +528,9 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                     hasPlayableStream = true
                 )
                 projectRepository.updateProject(updatedProject)
+                firestoreRepository?.let { repo ->
+                    viewModelScope.launch { repo.upsertProject(updatedProject) }
+                }
 
                 if (_editorState.value.project?.id == projectId) {
                     _editorState.update { state ->
@@ -423,6 +542,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                         }
                         if (clampedSeg != null) {
                             viewModelScope.launch { projectRepository.updateSegment(clampedSeg) }
+                            syncSegmentUpdateToCloud(clampedSeg)
                         }
                         state.copy(
                             project = updatedProject,
@@ -497,7 +617,11 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                         trimEndMs = topClip?.endMs ?: state.trimEndMs
                     )
                 }
-                _statusBannerMessage.value = "Rekomendasi timestamp [Sampel AI] diterapkan ke slider."
+                _statusBannerMessage.value = if (aiResult.isPlaceholderMode) {
+                    "Rekomendasi timestamp [Sampel AI] diterapkan ke slider."
+                } else {
+                    "Rekomendasi timestamp Gemini AI diterapkan ke slider."
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -560,6 +684,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                 }
                 val persistedSegment = projectRepository.getSegmentsForProject(savedProjectId).firstOrNull()
                     ?: manualSegment.copy(projectId = savedProjectId)
+                syncProjectSnapshotToCloud(savedProjectId)
                 _selectedProjectId.value = savedProjectId
                 exportSegment(persistedSegment, video.uriString)
             } catch (e: CancellationException) {
@@ -617,6 +742,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                 }
                 val persistedSegment = projectRepository.getSegmentsForProject(savedProjectId).firstOrNull()
                     ?: manualSegment.copy(projectId = savedProjectId)
+                syncProjectSnapshotToCloud(savedProjectId)
                 _selectedProjectId.value = savedProjectId
                 loadSegmentForEditor(persistedSegment.id)
                 onReady(persistedSegment.id)
@@ -686,6 +812,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
+                syncProjectSnapshotToCloud(savedProjectId)
                 _studioState.update { it.copy(analysisProgress = 1f, analysisStepIndex = 3) }
                 kotlinx.coroutines.delay(300L)
 
@@ -721,6 +848,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
     fun deleteProject(projectId: Long) {
         viewModelScope.launch {
             projectRepository.deleteProject(projectId)
+            firestoreRepository?.deleteProjectAndChildren(projectId)
             _statusBannerMessage.value = "Proyek dihapus."
         }
     }
@@ -729,6 +857,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val updated = segment.copy(isFavorite = !segment.isFavorite)
             projectRepository.updateSegment(updated)
+            syncSegmentUpdateToCloud(updated)
             if (_editorState.value.segment?.id == segment.id) {
                 _editorState.update { it.copy(segment = updated) }
             }
@@ -746,7 +875,9 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
             if (list.isEmpty()) return@launch
             list.forEach { seg ->
                 if (!seg.isFavorite) {
-                    projectRepository.updateSegment(seg.copy(isFavorite = true))
+                    val updated = seg.copy(isFavorite = true)
+                    projectRepository.updateSegment(updated)
+                    syncSegmentUpdateToCloud(updated)
                 }
             }
             _statusBannerMessage.value = "Semua ${list.size} klip terbaik disimpan ke Favorit!"
@@ -934,6 +1065,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
         }
         updatedSeg?.let { seg ->
             viewModelScope.launch { projectRepository.updateSegment(seg) }
+            syncSegmentUpdateToCloud(seg)
         }
         _statusBannerMessage.value = if (track != null) {
             "Musik latar \"${track.title}\" dipasang."
@@ -1053,8 +1185,15 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                         segment = nextSeg
                     )
                 }
-                updatedSegment?.let { projectRepository.updateSegment(it) }
-                _statusBannerMessage.value = "[Sampel AI] Mood ${result.audioAnalysis.detectedMood.label} terdeteksi • ${result.recommendedTracks.size} musik direkomendasikan."
+                updatedSegment?.let {
+                    projectRepository.updateSegment(it)
+                    syncSegmentUpdateToCloud(it)
+                }
+                _statusBannerMessage.value = if (result.isPlaceholderMode) {
+                    "[Sampel AI] Mood ${result.audioAnalysis.detectedMood.label} terdeteksi • ${result.recommendedTracks.size} musik direkomendasikan."
+                } else {
+                    "Gemini AI: Mood ${result.audioAnalysis.detectedMood.label} terdeteksi • ${result.recommendedTracks.size} musik direkomendasikan."
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1115,8 +1254,15 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                         segment = nextSeg
                     )
                 }
-                updatedSegment?.let { projectRepository.updateSegment(it) }
-                _statusBannerMessage.value = "[Sampel AI] Visual hook 3 detik pertama dibuat (${result.recommendedStyle.label})."
+                updatedSegment?.let {
+                    projectRepository.updateSegment(it)
+                    syncSegmentUpdateToCloud(it)
+                }
+                _statusBannerMessage.value = if (result.isPlaceholderMode) {
+                    "[Sampel AI] Visual hook 3 detik pertama dibuat (${result.recommendedStyle.label})."
+                } else {
+                    "Gemini AI: Visual hook 3 detik pertama dibuat (${result.recommendedStyle.label})."
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1219,8 +1365,15 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                         segment = nextSegment
                     )
                 }
-                updatedSegment?.let { projectRepository.updateSegment(it) }
-                _statusBannerMessage.value = "${result.cues.size} baris subtitle [Sampel AI] dibuat & disinkronkan."
+                updatedSegment?.let {
+                    projectRepository.updateSegment(it)
+                    syncSegmentUpdateToCloud(it)
+                }
+                _statusBannerMessage.value = if (result.isPlaceholderMode) {
+                    "${result.cues.size} baris subtitle [Sampel AI] dibuat & disinkronkan."
+                } else {
+                    "${result.cues.size} baris subtitle Gemini AI dibuat & disinkronkan."
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1250,7 +1403,8 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
         val seg = _editorState.value.segment ?: return
         viewModelScope.launch {
             projectRepository.updateSegment(seg)
-            _statusBannerMessage.value = "Perubahan klip disimpan."
+            syncSegmentUpdateToCloud(seg)
+            _statusBannerMessage.value = "Perubahan klip disimpan & disinkronkan ke Cloud."
         }
     }
 
@@ -1296,6 +1450,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
 
                 val savedId = projectRepository.saveExportedClip(exported)
                 val finalClip = exported.copy(id = savedId)
+                firestoreRepository?.upsertExportedClip(finalClip, project)
                 _exportProgress.value = ExportProgressState.Completed(finalClip)
                 _statusBannerMessage.value = if (finalClip.galleryUri != null) {
                     "Ekspor MP4 selesai & tersimpan ke Galeri (Movies/AIClipper)"
@@ -1387,6 +1542,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
 
                 val savedId = projectRepository.saveExportedClip(exported)
                 val finalClip = exported.copy(id = savedId)
+                firestoreRepository?.upsertExportedClip(finalClip, project)
                 _exportProgress.value = ExportProgressState.Completed(finalClip)
                 _statusBannerMessage.value = "Video gabungan ${effectiveSegments.size} klip dengan transisi ${effectiveSegments.first().transitionStyle.label} selesai!"
             } catch (e: CancellationException) {
@@ -1424,6 +1580,8 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                     val updatedClip = exportedClip.copy(galleryUri = savedUri.toString())
                     if (exportedClip.galleryUri.isNullOrBlank()) {
                         projectRepository.saveExportedClip(updatedClip)
+                        val parentProj = projectRepository.getProject(updatedClip.projectId)
+                        firestoreRepository?.upsertExportedClip(updatedClip, parentProj)
                     }
                     _shareSheetState.update { current ->
                         if (current != null && current.clip.id == exportedClip.id) {
@@ -1482,6 +1640,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             runCatching { File(exportedClip.filePath).delete() }
             projectRepository.deleteExportedClip(exportedClip.id)
+            firestoreRepository?.deleteExportedClip(exportedClip.id)
             _statusBannerMessage.value = "File ekspor dihapus."
         }
     }
@@ -1759,6 +1918,7 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             val savedSegments = projectRepository.getSegmentsForProject(savedProjectId)
+            syncProjectSnapshotToCloud(savedProjectId)
             val topSegment = savedSegments.maxByOrNull { it.viralScore }
 
             var exportedId: Long? = null
@@ -1790,6 +1950,8 @@ class ClipperViewModel(application: Application) : AndroidViewModel(application)
                 )
                 activeBatchTransformer = null
                 exportedId = projectRepository.saveExportedClip(exported)
+                val savedProj = projectRepository.getProject(savedProjectId)
+                firestoreRepository?.upsertExportedClip(exported.copy(id = exportedId), savedProj)
             }
 
             updateItem {

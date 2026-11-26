@@ -248,8 +248,8 @@ fun AiDemoNoticeBanner(
             .fillMaxWidth()
             .testTag("ai_demo_notice_banner"),
         shape = RoundedCornerShape(14.dp),
-        color = StudioAmberContainer.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, StudioAmber.copy(alpha = 0.45f))
+        color = StudioEmeraldContainer.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, StudioEmerald.copy(alpha = 0.55f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = if (compact) 8.dp else 11.dp),
@@ -259,7 +259,7 @@ fun AiDemoNoticeBanner(
             Icon(
                 imageVector = Icons.Outlined.Info,
                 contentDescription = stringResource(R.string.ai_demo_notice_title),
-                tint = StudioAmber,
+                tint = StudioEmerald,
                 modifier = Modifier
                     .padding(top = 1.dp)
                     .size(18.dp)
@@ -268,7 +268,7 @@ fun AiDemoNoticeBanner(
                 Text(
                     text = stringResource(R.string.ai_demo_notice_title),
                     style = MaterialTheme.typography.titleSmall,
-                    color = StudioAmber
+                    color = StudioEmerald
                 )
                 Text(
                     text = stringResource(R.string.ai_demo_notice_body),

@@ -56,4 +56,24 @@ class ClipProjectRepository(
     suspend fun deleteExportedClip(exportId: Long) {
         clipDao.deleteExportedClipById(exportId)
     }
+
+    suspend fun restoreProjectFromCloud(project: ClipProject) {
+        if (project.id <= 0L) return
+        if (clipDao.getProjectById(project.id) == null) {
+            clipDao.insertProject(project.toEntity())
+        }
+    }
+
+    suspend fun restoreSegmentFromCloud(segment: ClipSegment) {
+        if (segment.id <= 0L || segment.projectId <= 0L) return
+        if (clipDao.getProjectById(segment.projectId) == null) return
+        if (clipDao.getSegmentById(segment.id) == null) {
+            clipDao.insertSegments(listOf(segment.toEntity()))
+        }
+    }
+
+    suspend fun restoreExportFromCloud(exportedClip: ExportedClip, existingLocalIds: Set<Long>) {
+        if (exportedClip.id <= 0L || exportedClip.id in existingLocalIds) return
+        clipDao.insertExportedClip(exportedClip.toEntity())
+    }
 }

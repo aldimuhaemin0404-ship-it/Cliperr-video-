@@ -15,8 +15,8 @@
     <string name="splash_loading">Memuat aplikasi…</string>
 
     <!-- AI Notice -->
-    <string name="ai_demo_notice_title">Mode Sampel AI Aktif</string>
-    <string name="ai_demo_notice_body">Hasil analisis klip dan caption saat ini menggunakan data sampel lokal. Fitur AI Gemini langsung memerlukan Firebase AI Logic.</string>
+    <string name="ai_demo_notice_title">Gemini AI Logic &amp; Cloud Sync Aktif</string>
+    <string name="ai_demo_notice_body">Analisis video multimodal Gemini 3.8 Flash, visual hook 3 detik, subtitle otomatis, dan sinkronisasi Cloud Firestore aktif untuk akun Anda.</string>
 
     <!-- Home / Studio Screen -->
     <string name="studio_hero_badge">ALDI AI STUDIO</string>
@@ -50,7 +50,7 @@
     <string name="studio_range_export_now">Potong &amp; Ekspor MP4</string>
     <string name="studio_suggest_timestamps">Sarankan Timestamp Klip (AI)</string>
     <string name="studio_suggesting_timestamps">Menganalisis frame &amp; metadata…</string>
-    <string name="studio_suggested_ranges_title">Rekomendasi Rentang Waktu [Sampel AI]</string>
+    <string name="studio_suggested_ranges_title">Rekomendasi Rentang Waktu (Gemini AI)</string>
     <string name="studio_target_platform">Target Platform &amp; Rasio</string>
     <string name="studio_focus_topic_label">Fokus Topik / Kata Kunci (Opsional)</string>
     <string name="studio_focus_topic_hint">Contoh: kutipan motivasi, momen lucu, tips utama</string>
@@ -106,7 +106,7 @@
     <string name="editor_regenerate_caption">Buat Ulang Caption</string>
     <string name="editor_generate_subtitles">Buat Subtitle Otomatis (AI)</string>
     <string name="editor_generating_subtitles">Menganalisis audio &amp; visual klip…</string>
-    <string name="editor_subtitles_list_title">Subtitle Tersinkronisasi [Sampel AI]</string>
+    <string name="editor_subtitles_list_title">Subtitle Tersinkronisasi (Gemini AI)</string>
     <string name="editor_save_changes">Simpan Perubahan</string>
     <string name="editor_save_video_cta">Simpan Video</string>
     <string name="editor_export_clip">Render &amp; Ekspor MP4</string>
@@ -201,4 +201,16 @@
     <string name="editor_merge_clips_cta">Gabungkan Semua Klip Proyek + Transisi</string>
     <string name="clips_merge_all_cta">Gabungkan Klip + Transisi</string>
     <string name="home_open_web_studio">Versi Web</string>
+
+    <!-- Firebase Auth & Cloud Firestore Sync -->
+    <string name="auth_title">Masuk ke Aldi AI Clipper Studio</string>
+    <string name="auth_subtitle">Sinkronkan proyek klip, subtitle, dan riwayat ekspor Anda dengan aman ke Cloud Firestore dan aktifkan analisis Gemini AI.</string>
+    <string name="auth_google_cta">Masuk dengan Google</string>
+    <string name="auth_checking_session">Memeriksa sesi Google…</string>
+    <string name="auth_signing_in">Menghubungkan akun Google…</string>
+    <string name="auth_feature_gemini">Deteksi momen viral &amp; subtitle otomatis via Gemini 3.8 Flash</string>
+    <string name="auth_feature_cloud">Sinkronisasi real-time proyek &amp; klip favorit ke Cloud Firestore</string>
+    <string name="auth_feature_security">Terlindungi oleh Google Sign-In &amp; Firebase App Check</string>
+    <string name="account_sign_out">Keluar</string>
+    <string name="cloud_sync_active">Cloud Sync Aktif</string>
 </resources>

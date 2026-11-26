@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,15 +57,17 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -72,12 +75,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.R
+import com.example.data.ai.FirebaseAiClipperRepository
+import com.example.data.firebase.FirestoreClipRepository
 import com.example.domain.model.ExportProgressState
 import com.example.domain.model.ExportedClip
 import com.example.media.SocialShareHelper
+import com.example.ui.auth.authStateFlow
+import com.example.ui.auth.signOut
 import com.example.ui.components.ExportProgressBanner
 import com.example.ui.components.SocialShareBottomSheet
 import com.example.ui.screens.AiAnalysisProgressScreen
+import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.BatchQueueScreen
 import com.example.ui.screens.ClipEditorScreen
 import com.example.ui.screens.ExportSettingsScreen
@@ -87,6 +95,7 @@ import com.example.ui.screens.PopularVideosScreen
 import com.example.ui.screens.ProjectsScreen
 import com.example.ui.screens.SplashScreen
 import com.example.ui.screens.StudioScreen
+import com.example.ui.screens.WebPortalScreen
 import com.example.ui.state.ClipperViewModel
 import com.example.ui.theme.CosmicBackground
 import com.example.ui.theme.CosmicOutline
@@ -95,6 +104,9 @@ import com.example.ui.theme.FuturisticBlue
 import com.example.ui.theme.FuturisticCyan
 import com.example.ui.theme.NeonMagenta
 import com.example.ui.theme.NeonPurple
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestore
 
 const val ROUTE_SPLASH = "splash"
 const val ROUTE_STUDIO = "studio"
@@ -106,6 +118,7 @@ const val ROUTE_EDITOR = "editor/{segmentId}"
 const val ROUTE_EXPORT_SETTINGS = "export_settings/{segmentId}"
 const val ROUTE_EXPORT_SUCCESS = "export_success"
 const val ROUTE_BATCH_QUEUE = "batch_queue"
+const val ROUTE_WEB_PORTAL = "web_portal"
 
 private data class TopLevelDestination(
     val route: String,
@@ -149,8 +162,61 @@ private val topLevelDestinations = listOf(
 @Composable
 fun AiClipperApp(
     sharedLinkText: String? = null,
-    onSharedLinkConsumed: () -> Unit = {},
-    viewModel: ClipperViewModel = viewModel()
+    onSharedLinkConsumed: () -> Unit = {}
+) {
+    val auth = remember { Firebase.auth }
+    val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+    var splashCompleted by remember { mutableStateOf(false) }
+
+    if (!splashCompleted) {
+        SplashScreen(
+            onFinished = { splashCompleted = true }
+        )
+        return
+    }
+
+    val signedInUser = currentUser
+    if (signedInUser == null) {
+        AuthScreen(onAuthSuccess = {})
+    } else {
+        androidx.compose.runtime.key(signedInUser.uid) {
+            val userViewModel: ClipperViewModel = viewModel(
+                key = signedInUser.uid,
+                factory = viewModelFactory {
+                    initializer {
+                        val app = checkNotNull(this[APPLICATION_KEY]) {
+                            "APPLICATION_KEY missing from CreationExtras"
+                        }
+                        val databaseId = app.getString(R.string.firestore_database_id)
+                        val db = FirebaseFirestore.getInstance(databaseId)
+                        ClipperViewModel(
+                            application = app,
+                            currentUserId = signedInUser.uid,
+                            firestoreRepository = FirestoreClipRepository(db),
+                            aiRepository = FirebaseAiClipperRepository()
+                        )
+                    }
+                }
+            )
+            AuthenticatedAiClipperContent(
+                userDisplayName = signedInUser.displayName
+                    ?.takeIf { it.isNotBlank() }
+                    ?: signedInUser.email
+                    ?: "Kreator Google",
+                sharedLinkText = sharedLinkText,
+                onSharedLinkConsumed = onSharedLinkConsumed,
+                viewModel = userViewModel
+            )
+        }
+    }
+}
+
+@Composable
+private fun AuthenticatedAiClipperContent(
+    userDisplayName: String,
+    sharedLinkText: String?,
+    onSharedLinkConsumed: () -> Unit,
+    viewModel: ClipperViewModel
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -169,10 +235,13 @@ fun AiClipperApp(
     val batchQueue by viewModel.batchQueue.collectAsStateWithLifecycle()
     val batchConfig by viewModel.batchConfig.collectAsStateWithLifecycle()
     val isBatchRunning by viewModel.isBatchRunning.collectAsStateWithLifecycle()
+    val cloudSyncState by viewModel.cloudSyncState.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var lastCompletedExport by remember { mutableStateOf<ExportedClip?>(null) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val credentialManager = remember(context) { CredentialManager.create(context) }
 
     LaunchedEffect(sharedLinkText) {
         if (!sharedLinkText.isNullOrBlank()) {
@@ -375,18 +444,8 @@ fun AiClipperApp(
                     Box(modifier = Modifier.weight(1f)) {
                         NavHost(
                             navController = navController,
-                            startDestination = ROUTE_SPLASH
+                            startDestination = ROUTE_STUDIO
                         ) {
-                            composable(ROUTE_SPLASH) {
-                                SplashScreen(
-                                    onFinished = {
-                                        navController.navigate(ROUTE_STUDIO) {
-                                            popUpTo(ROUTE_SPLASH) { inclusive = true }
-                                            launchSingleTop = true
-                                        }
-                                    }
-                                )
-                            }
 
                             composable(ROUTE_STUDIO) {
                                 StudioScreen(
@@ -448,14 +507,30 @@ fun AiClipperApp(
                                     },
                                     onDeleteProject = viewModel::deleteProject,
                                     onOpenWebStudio = {
-                                        val webIntent = Intent(
-                                            Intent.ACTION_VIEW,
-                                            Uri.parse("https://ais-pre-kju5nzh3psq4ly2lezgpni-831596576627.asia-northeast1.run.app")
+                                        navController.navigate(ROUTE_WEB_PORTAL) {
+                                            launchSingleTop = true
+                                        }
+                                    },
+                                    userDisplayName = userDisplayName,
+                                    cloudSyncState = cloudSyncState,
+                                    onSignOut = {
+                                        signOut(
+                                            credentialManager = credentialManager,
+                                            scope = scope,
+                                            onBeforeSignOut = { viewModel.prepareForSignOut() }
                                         )
-                                        runCatching { context.startActivity(webIntent) }
-                                            .onFailure {
-                                                viewModel.postStatusMessage("Browser tidak tersedia untuk membuka Versi Web.")
-                                            }
+                                    }
+                                )
+                            }
+
+                            composable(ROUTE_WEB_PORTAL) {
+                                WebPortalScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onSwitchToNativeWithUrl = { embeddedUrl ->
+                                        if (!embeddedUrl.isNullOrBlank()) {
+                                            viewModel.onSharedLinkReceived(embeddedUrl)
+                                        }
+                                        navController.popBackStack()
                                     }
                                 )
                             }

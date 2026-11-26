@@ -1,0 +1,457 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated creator profile synced to Cloud Firestore",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the account owner"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Creator display name from Google Sign-In"
+        },
+        "email": {
+          "type": "string",
+          "description": "Optional creator email address"
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional Google profile photo URL"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of first profile creation (FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last profile update (FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CloudClipProject": {
+      "title": "CloudClipProject",
+      "description": "AI Clipper video project metadata owned by the user",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID"
+        },
+        "localProjectId": {
+          "type": "integer",
+          "description": "Local Room primary key for cross-reference"
+        },
+        "title": {
+          "type": "string",
+          "description": "Project display title"
+        },
+        "sourceUri": {
+          "type": "string",
+          "description": "Source video URI or stream URL"
+        },
+        "durationMs": {
+          "type": "integer",
+          "description": "Total video duration in milliseconds"
+        },
+        "width": {
+          "type": "integer",
+          "description": "Source video width in pixels"
+        },
+        "height": {
+          "type": "integer",
+          "description": "Source video height in pixels"
+        },
+        "targetPlatform": {
+          "type": "string",
+          "enum": [
+            "REELS_TIKTOK",
+            "YOUTUBE_SHORTS",
+            "INSTAGRAM_FEED",
+            "SQUARE_POST",
+            "HIGHLIGHT_WIDE"
+          ],
+          "description": "Target social media output format"
+        },
+        "focusTopic": {
+          "type": "string",
+          "description": "Optional user topic hint for Gemini AI analysis"
+        },
+        "sourcePlatformName": {
+          "type": "string",
+          "description": "Optional social platform name"
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Optional source creator name"
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "description": "Optional preview thumbnail URL"
+        },
+        "hasPlayableStream": {
+          "type": "boolean",
+          "description": "Whether direct video stream/file is playable for Media3 rendering"
+        },
+        "placeholderAi": {
+          "type": "boolean",
+          "description": "Whether fallback sample AI generated this project"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of project creation (FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last project update (FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "localProjectId",
+        "title",
+        "sourceUri",
+        "durationMs",
+        "width",
+        "height",
+        "targetPlatform",
+        "focusTopic",
+        "hasPlayableStream",
+        "placeholderAi",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CloudClipSegment": {
+      "title": "CloudClipSegment",
+      "description": "AI-detected or manually trimmed clip segment with captions, hook, music, and transition settings",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID"
+        },
+        "projectCloudId": {
+          "type": "string",
+          "description": "Parent CloudClipProject document ID"
+        },
+        "localProjectId": {
+          "type": "integer",
+          "description": "Local Room project ID"
+        },
+        "localSegmentId": {
+          "type": "integer",
+          "description": "Local Room segment ID"
+        },
+        "title": {
+          "type": "string",
+          "description": "Clip segment title"
+        },
+        "hookLine": {
+          "type": "string",
+          "description": "Opening 3-second visual hook headline"
+        },
+        "viralScore": {
+          "type": "integer",
+          "description": "Estimated viral score from 0 to 100"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "AI explanation for selecting this clip"
+        },
+        "captionText": {
+          "type": "string",
+          "description": "Social media caption text"
+        },
+        "hashtags": {
+          "type": "string",
+          "description": "Suggested hashtags string"
+        },
+        "startMs": {
+          "type": "integer",
+          "description": "Trim start timestamp in milliseconds"
+        },
+        "endMs": {
+          "type": "integer",
+          "description": "Trim end timestamp in milliseconds"
+        },
+        "aspectRatio": {
+          "type": "string",
+          "enum": [
+            "VERTICAL_9_16",
+            "PORTRAIT_4_5",
+            "SQUARE_1_1",
+            "LANDSCAPE_16_9"
+          ],
+          "description": "Export aspect ratio preset"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "ENERGETIC",
+            "PROFESSIONAL",
+            "HUMOROUS",
+            "EDUCATIONAL"
+          ],
+          "description": "AI caption & hook tone"
+        },
+        "videoFilter": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "GRAYSCALE",
+            "SEPIA",
+            "VIVID",
+            "WARM",
+            "COOL"
+          ],
+          "description": "Color grading filter preset"
+        },
+        "brightness": {
+          "type": "number",
+          "description": "Brightness adjustment between -1.0 and 1.0"
+        },
+        "showSubtitles": {
+          "type": "boolean",
+          "description": "Whether burned-in subtitles are enabled"
+        },
+        "showIntroHook": {
+          "type": "boolean",
+          "description": "Whether 3-second intro hook overlay is enabled"
+        },
+        "hookDurationMs": {
+          "type": "integer",
+          "description": "Intro hook duration in milliseconds"
+        },
+        "hookOverlayStyle": {
+          "type": "string",
+          "enum": [
+            "NEON_BADGE",
+            "CYBER_BANNER",
+            "MINIMAL_BOLD"
+          ],
+          "description": "Visual style of the intro hook overlay"
+        },
+        "transitionStyle": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "FADE",
+            "SLIDE",
+            "DISSOLVE"
+          ],
+          "description": "Transition effect between clips"
+        },
+        "transitionDurationMs": {
+          "type": "integer",
+          "description": "Transition duration in milliseconds"
+        },
+        "includeAudio": {
+          "type": "boolean",
+          "description": "Whether original audio track is included"
+        },
+        "selectedMusicTrackId": {
+          "type": "string",
+          "description": "Optional selected royalty-free music track ID"
+        },
+        "selectedMusicTitle": {
+          "type": "string",
+          "description": "Optional selected background music title"
+        },
+        "selectedMusicUrl": {
+          "type": "string",
+          "description": "Optional selected background music URL"
+        },
+        "musicVolume": {
+          "type": "number",
+          "description": "Background music mix volume (0.0 to 1.0)"
+        },
+        "audioMoodLabel": {
+          "type": "string",
+          "description": "Optional detected audio mood label"
+        },
+        "audioBpm": {
+          "type": "integer",
+          "description": "Optional estimated tempo BPM"
+        },
+        "exportQuality": {
+          "type": "string",
+          "enum": [
+            "HD_1080P",
+            "HD_720P",
+            "SD_480P"
+          ],
+          "description": "Target export resolution preset"
+        },
+        "favorite": {
+          "type": "boolean",
+          "description": "Whether user bookmarked this clip as favorite"
+        },
+        "placeholderAi": {
+          "type": "boolean",
+          "description": "Whether fallback sample AI produced this segment"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation (FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update (FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "projectCloudId",
+        "localProjectId",
+        "localSegmentId",
+        "title",
+        "hookLine",
+        "viralScore",
+        "rationale",
+        "captionText",
+        "hashtags",
+        "startMs",
+        "endMs",
+        "aspectRatio",
+        "tone",
+        "videoFilter",
+        "brightness",
+        "showSubtitles",
+        "showIntroHook",
+        "hookDurationMs",
+        "hookOverlayStyle",
+        "transitionStyle",
+        "transitionDurationMs",
+        "includeAudio",
+        "musicVolume",
+        "exportQuality",
+        "favorite",
+        "placeholderAi",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CloudExportedClip": {
+      "title": "CloudExportedClip",
+      "description": "Rendered MP4 export history metadata synced per user",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID"
+        },
+        "projectCloudId": {
+          "type": "string",
+          "description": "Parent CloudClipProject document ID"
+        },
+        "localExportId": {
+          "type": "integer",
+          "description": "Local Room export ID"
+        },
+        "localProjectId": {
+          "type": "integer",
+          "description": "Local Room project ID"
+        },
+        "localSegmentId": {
+          "type": "integer",
+          "description": "Local Room segment ID"
+        },
+        "title": {
+          "type": "string",
+          "description": "Exported video title"
+        },
+        "filePath": {
+          "type": "string",
+          "description": "Device file path of exported MP4"
+        },
+        "durationMs": {
+          "type": "integer",
+          "description": "Rendered clip duration in milliseconds"
+        },
+        "fileSizeBytes": {
+          "type": "integer",
+          "description": "Rendered MP4 file size in bytes"
+        },
+        "aspectRatio": {
+          "type": "string",
+          "enum": [
+            "VERTICAL_9_16",
+            "PORTRAIT_4_5",
+            "SQUARE_1_1",
+            "LANDSCAPE_16_9"
+          ],
+          "description": "Rendered aspect ratio preset"
+        },
+        "galleryUri": {
+          "type": "string",
+          "description": "Optional MediaStore gallery URI"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation (FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update (FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "projectCloudId",
+        "localExportId",
+        "localProjectId",
+        "localSegmentId",
+        "title",
+        "filePath",
+        "durationMs",
+        "fileSizeBytes",
+        "aspectRatio",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Authenticated user profile document isolated by Firebase Auth UID"
+    },
+    "/users/{userId}/projects/{projectId}": {
+      "schema": {
+        "$ref": "#/entities/CloudClipProject"
+      },
+      "description": "User-owned video clipping projects synced across devices"
+    },
+    "/users/{userId}/segments/{segmentId}": {
+      "schema": {
+        "$ref": "#/entities/CloudClipSegment"
+      },
+      "description": "User-owned AI clip segments, captions, hooks, music, and transition settings"
+    },
+    "/users/{userId}/exports/{exportId}": {
+      "schema": {
+        "$ref": "#/entities/CloudExportedClip"
+      },
+      "description": "User-owned exported MP4 clip metadata history"
+    }
+  }
+}
