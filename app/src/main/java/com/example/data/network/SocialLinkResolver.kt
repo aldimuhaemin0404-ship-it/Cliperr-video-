@@ -18,6 +18,9 @@ class SocialLinkResolver(
         .readTimeout(20, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
+        .dns(UrlSecurityValidator.safeDns)
+        .addInterceptor(UrlSecurityValidator.safeApplicationInterceptor)
+        .addNetworkInterceptor(UrlSecurityValidator.safeNetworkInterceptor)
         .build()
 ) {
     companion object {
@@ -33,13 +36,14 @@ class SocialLinkResolver(
         val trimmed = rawText.trim()
         if (trimmed.isEmpty()) return null
         val match = URL_EXTRACT_REGEX.find(trimmed)?.value
-        if (match != null) {
-            return match.trimEnd('.', ',', ';', '!', '?')
+        val candidate = if (match != null) {
+            match.trimEnd('.', ',', ';', '!', '?')
+        } else if (trimmed.contains('.') && !trimmed.contains(' ') && !trimmed.contains(':')) {
+            "https://$trimmed"
+        } else {
+            return null
         }
-        if (trimmed.contains('.') && !trimmed.contains(' ')) {
-            return "https://$trimmed"
-        }
-        return null
+        return UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(candidate)
     }
 
     fun detectPlatform(url: String): SocialSourcePlatform {
@@ -66,13 +70,14 @@ class SocialLinkResolver(
 
     suspend fun resolveLink(rawInput: String): ResolvedSocialVideo = withContext(Dispatchers.IO) {
         val extractedUrl = extractFirstUrl(rawInput)
-            ?: throw IllegalArgumentException("Masukkan tautan URL video yang valid (dimulai dengan https://).")
+            ?: throw IllegalArgumentException("Masukkan tautan URL video eksternal yang valid dan aman (https://).")
 
         val initialPlatform = detectPlatform(extractedUrl)
 
         // 1. Check if URL itself is a direct video stream via extension or Content-Type
         val headInfo = inspectUrlHeaders(extractedUrl)
-        val finalUrl = headInfo.finalUrl.ifBlank { extractedUrl }
+        val finalUrl = UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(headInfo.finalUrl)
+            ?: extractedUrl
         val resolvedPlatform = detectPlatform(finalUrl).let {
             if (it == SocialSourcePlatform.OTHER_SOCIAL && initialPlatform != SocialSourcePlatform.OTHER_SOCIAL) {
                 initialPlatform
@@ -105,9 +110,11 @@ class SocialLinkResolver(
         val oEmbed = fetchOEmbedIfSupported(finalUrl, resolvedPlatform)
         val htmlMeta = fetchHtmlMetadata(finalUrl)
 
-        val candidateStream = htmlMeta.videoStreamUrl?.takeIf { candidate ->
-            isLikelyPlayableVideoUrl(candidate) || inspectUrlHeaders(candidate).isDirectVideo
-        }
+        val candidateStream = htmlMeta.videoStreamUrl
+            ?.let { UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(it) }
+            ?.takeIf { candidate ->
+                isLikelyPlayableVideoUrl(candidate) || inspectUrlHeaders(candidate).isDirectVideo
+            }
 
         val resolvedTitle = oEmbed?.title?.takeIf { it.isNotBlank() }
             ?: htmlMeta.title?.takeIf { it.isNotBlank() }
@@ -116,8 +123,9 @@ class SocialLinkResolver(
         val resolvedAuthor = oEmbed?.authorName?.takeIf { it.isNotBlank() }
             ?: htmlMeta.authorName?.takeIf { it.isNotBlank() }
 
-        val resolvedThumb = oEmbed?.thumbnailUrl?.takeIf { it.isNotBlank() }
-            ?: htmlMeta.thumbnailUrl?.takeIf { it.isNotBlank() }
+        val resolvedThumb = oEmbed?.thumbnailUrl
+            ?.let { UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(it) }
+            ?: htmlMeta.thumbnailUrl?.let { UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(it) }
 
         val resolvedWidth = oEmbed?.width ?: htmlMeta.width ?: if (resolvedPlatform == SocialSourcePlatform.YOUTUBE) 1280 else 1080
         val resolvedHeight = oEmbed?.height ?: htmlMeta.height ?: if (resolvedPlatform == SocialSourcePlatform.YOUTUBE) 720 else 1920
@@ -151,6 +159,9 @@ class SocialLinkResolver(
     )
 
     private fun inspectUrlHeaders(url: String): UrlHeaderInfo {
+        if (!UrlSecurityValidator.isSafeExternalHttpUrl(url)) {
+            return UrlHeaderInfo(finalUrl = url, contentType = "", isDirectVideo = false)
+        }
         val lowerPath = url.lowercase(Locale.ROOT).substringBefore('?')
         if (DIRECT_VIDEO_EXTENSIONS.any { lowerPath.endsWith(it) }) {
             return UrlHeaderInfo(finalUrl = url, contentType = "video/mp4", isDirectVideo = true)
@@ -164,6 +175,9 @@ class SocialLinkResolver(
                 .build()
             client.newCall(request).execute().use { response ->
                 val resolvedUrl = response.request.url.toString()
+                if (!UrlSecurityValidator.isSafeExternalHttpUrl(resolvedUrl)) {
+                    return@use UrlHeaderInfo(finalUrl = url, contentType = "", isDirectVideo = false)
+                }
                 val contentType = response.header("Content-Type").orEmpty().lowercase(Locale.ROOT)
                 val isVideo = contentType.startsWith("video/") ||
                     contentType.contains("mpegurl") ||

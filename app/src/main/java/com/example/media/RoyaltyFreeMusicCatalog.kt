@@ -2,6 +2,7 @@ package com.example.media
 
 import android.content.Context
 import android.net.Uri
+import com.example.data.network.UrlSecurityValidator
 import com.example.domain.model.MusicMood
 import com.example.domain.model.MusicTrackRecommendation
 import kotlinx.coroutines.Dispatchers
@@ -123,20 +124,7 @@ object RoyaltyFreeMusicCatalog {
         url != null && url.startsWith(SYNTH_SCHEME)
 
     fun buildCustomUrlTrack(rawUrl: String): MusicTrackRecommendation? {
-        val clean = rawUrl.trim()
-        if (clean.isBlank()) return null
-        val normalized = if (
-            clean.startsWith("http://", ignoreCase = true) ||
-            clean.startsWith("https://", ignoreCase = true) ||
-            clean.startsWith("content://", ignoreCase = true) ||
-            clean.startsWith("file://", ignoreCase = true) ||
-            clean.startsWith(SYNTH_SCHEME)
-        ) {
-            clean
-        } else {
-            "https://$clean"
-        }
-
+        val normalized = UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(rawUrl) ?: return null
         val parsedUri = runCatching { java.net.URI(normalized) }.getOrNull() ?: return null
         val path = parsedUri.path.orEmpty()
         val lastSeg = path.trimEnd('/').substringAfterLast('/').ifBlank { null }
@@ -171,7 +159,9 @@ object RoyaltyFreeMusicCatalog {
     ): Uri? = withContext(Dispatchers.IO) {
         if (audioUrl.isNullOrBlank()) return@withContext null
         if (!isBuiltInSynthUrl(audioUrl)) {
-            return@withContext Uri.parse(audioUrl)
+            val safeRemote = UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(audioUrl)
+                ?: return@withContext null
+            return@withContext Uri.parse(safeRemote)
         }
 
         val resolvedId = trackId ?: audioUrl.removePrefix(SYNTH_SCHEME)
@@ -180,8 +170,10 @@ object RoyaltyFreeMusicCatalog {
 
         val dir = File(context.filesDir, "royalty_free_music").apply {
             if (!exists()) mkdirs()
-        }
-        val targetFile = File(dir, "${track.id}_${durationSec}s.wav")
+        }.canonicalFile
+        val safeFileName = "${track.id.replace(Regex("[^a-zA-Z0-9_\\-]"), "_")}_${durationSec}s.wav"
+        val targetFile = File(dir, safeFileName).canonicalFile
+        if (!targetFile.path.startsWith(dir.path + File.separator)) return@withContext null
         if (!targetFile.exists() || targetFile.length() < 4096L) {
             synthesizeWavFile(
                 file = targetFile,

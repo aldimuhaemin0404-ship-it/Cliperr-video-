@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.data.network.UrlSecurityValidator
 import com.example.ui.theme.CosmicBackground
 import com.example.ui.theme.CosmicOutline
 import com.example.ui.theme.CosmicSurface
@@ -219,33 +220,49 @@ fun WebPortalScreen(
                         settings.apply {
                             javaScriptEnabled = true
                             domStorageEnabled = true
-                            databaseEnabled = true
+                            databaseEnabled = false
                             cacheMode = WebSettings.LOAD_DEFAULT
-                            allowFileAccess = true
-                            allowContentAccess = true
+                            allowFileAccess = false
+                            allowContentAccess = false
+                            @Suppress("DEPRECATION")
+                            allowFileAccessFromFileURLs = false
+                            @Suppress("DEPRECATION")
+                            allowUniversalAccessFromFileURLs = false
+                            @Suppress("DEPRECATION")
+                            saveFormData = false
+                            @Suppress("DEPRECATION")
+                            setGeolocationEnabled(false)
                             mediaPlaybackRequiresUserGesture = false
                             useWideViewPort = true
                             loadWithOverviewMode = true
-                            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                         }
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(
                                 view: WebView?,
                                 request: WebResourceRequest?
                             ): Boolean {
-                                val uri = request?.url ?: return false
+                                val uri = request?.url ?: return true
                                 val scheme = uri.scheme?.lowercase() ?: ""
+                                if (uri.toString().startsWith(LOCAL_WEB_PORTAL_URL)) {
+                                    return false
+                                }
                                 if (scheme == "aldiaiclipper") {
-                                    onSwitchToNativeWithUrl(uri.getQueryParameter("url"))
+                                    val safeUrl = uri.getQueryParameter("url")
+                                        ?.let { UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(it) }
+                                    onSwitchToNativeWithUrl(safeUrl)
                                     return true
                                 }
                                 if (scheme == "http" || scheme == "https") {
-                                    runCatching {
-                                        ctx.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                    val safeExternal = UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(uri.toString())
+                                    if (safeExternal != null) {
+                                        runCatching {
+                                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeExternal)))
+                                        }
                                     }
                                     return true
                                 }
-                                return false
+                                return true
                             }
 
                             override fun onPageFinished(view: WebView?, url: String?) {

@@ -39,6 +39,17 @@ class FirestoreClipRepository(
     fun segmentDocId(localSegmentId: Long): String = "seg_$localSegmentId"
     fun exportDocId(localExportId: Long): String = "exp_$localExportId"
 
+    private suspend fun commitChunkedBatches(
+        operations: List<(com.google.firebase.firestore.WriteBatch) -> Unit>
+    ) {
+        if (operations.isEmpty()) return
+        operations.chunked(450).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { op -> op(batch) }
+            batch.commit().await()
+        }
+    }
+
     suspend fun syncUserProfile(user: FirebaseUser): Result<Unit> {
         val docPath = "users/${user.uid}"
         return try {
@@ -166,19 +177,19 @@ class FirestoreClipRepository(
             val projRef = userDoc.collection("projects").document(projId)
             currentPath = projRef.path
 
-            val batch = db.batch()
+            val ops = mutableListOf<(com.google.firebase.firestore.WriteBatch) -> Unit>()
             val projExists = projRef.get().await().exists()
             if (projExists) {
-                batch.update(projRef, project.toFirestoreUpdateMap())
+                ops += { b -> b.update(projRef, project.toFirestoreUpdateMap()) }
             } else {
-                batch.set(projRef, project.toFirestoreCreateMap(uid))
+                ops += { b -> b.set(projRef, project.toFirestoreCreateMap(uid)) }
             }
 
             segments.forEach { seg ->
                 val segRef = userDoc.collection("segments").document(segmentDocId(seg.id))
-                batch.set(segRef, seg.toFirestoreCreateMap(userId = uid, projectCloudId = projId))
+                ops += { b -> b.set(segRef, seg.toFirestoreCreateMap(userId = uid, projectCloudId = projId)) }
             }
-            batch.commit().await()
+            commitChunkedBatches(ops)
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -288,11 +299,11 @@ class FirestoreClipRepository(
                 .get()
                 .await()
 
-            val batch = db.batch()
-            segSnapshots.documents.forEach { batch.delete(it.reference) }
-            expSnapshots.documents.forEach { batch.delete(it.reference) }
-            batch.delete(projRef)
-            batch.commit().await()
+            val ops = mutableListOf<(com.google.firebase.firestore.WriteBatch) -> Unit>()
+            segSnapshots.documents.forEach { doc -> ops += { b -> b.delete(doc.reference) } }
+            expSnapshots.documents.forEach { doc -> ops += { b -> b.delete(doc.reference) } }
+            ops += { b -> b.delete(projRef) }
+            commitChunkedBatches(ops)
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e

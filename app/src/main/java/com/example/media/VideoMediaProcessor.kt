@@ -30,6 +30,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import com.example.data.network.UrlSecurityValidator
 import com.example.domain.model.AspectRatioPreset
 import com.example.domain.model.ClipSegment
 import com.example.domain.model.ExportedClip
@@ -171,7 +172,9 @@ class VideoMediaProcessor(private val context: Context) {
     private fun setRetrieverSource(retriever: MediaMetadataRetriever, uri: Uri) {
         val scheme = uri.scheme?.lowercase()
         if (scheme == "http" || scheme == "https") {
-            retriever.setDataSource(uri.toString(), HashMap())
+            val safeUrl = UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(uri.toString())
+                ?: throw SecurityException("URL stream tidak valid atau mengarah ke jaringan lokal.")
+            retriever.setDataSource(safeUrl, HashMap())
         } else {
             retriever.setDataSource(context, uri)
         }
@@ -504,8 +507,25 @@ class VideoMediaProcessor(private val context: Context) {
         return listOf(presentation)
     }
 
-    suspend fun saveClipToGallery(exportedClip: ExportedClip): Uri? =
-        saveFileToGallery(File(exportedClip.filePath), exportedClip.durationMs)
+    private fun resolveOwnedExportFile(rawPath: String): File? {
+        if (rawPath.isBlank()) return null
+        val candidate = runCatching { File(rawPath).canonicalFile }.getOrNull() ?: return null
+        val clipsDir = File(context.filesDir, "clips").canonicalFile
+        val exportsDir = File(context.filesDir, "exports").canonicalFile
+        val insideClips = candidate.path.startsWith(clipsDir.path + File.separator)
+        val insideExports = candidate.path.startsWith(exportsDir.path + File.separator)
+        return if (insideClips || insideExports) candidate else null
+    }
+
+    fun deleteExportFileIfOwned(exportedClip: ExportedClip): Boolean {
+        val ownedFile = resolveOwnedExportFile(exportedClip.filePath) ?: return false
+        return runCatching { ownedFile.exists() && ownedFile.delete() }.getOrDefault(false)
+    }
+
+    suspend fun saveClipToGallery(exportedClip: ExportedClip): Uri? {
+        val ownedFile = resolveOwnedExportFile(exportedClip.filePath) ?: return null
+        return saveFileToGallery(ownedFile, exportedClip.durationMs)
+    }
 
     private suspend fun saveFileToGallery(file: File, durationMs: Long): Uri? = withContext(Dispatchers.IO) {
         if (!file.exists()) return@withContext null
@@ -527,15 +547,22 @@ class VideoMediaProcessor(private val context: Context) {
             val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
                 ?: return@withContext null
 
-            resolver.openOutputStream(uri)?.use { out ->
-                FileInputStream(file).use { input ->
-                    input.copyTo(out)
+            try {
+                val outStream = resolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Gagal membuka output stream MediaStore.")
+                outStream.use { out ->
+                    FileInputStream(file).use { input ->
+                        input.copyTo(out)
+                    }
                 }
+                values.clear()
+                values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                uri
+            } catch (t: Throwable) {
+                runCatching { resolver.delete(uri, null, null) }
+                throw t
             }
-            values.clear()
-            values.put(MediaStore.Video.Media.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
-            uri
         } else {
             val moviesDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
                 ?: return@withContext null
@@ -553,7 +580,7 @@ class VideoMediaProcessor(private val context: Context) {
     }
 
     fun getShareableUri(exportedClip: ExportedClip): Uri? {
-        val file = File(exportedClip.filePath)
+        val file = resolveOwnedExportFile(exportedClip.filePath) ?: return null
         if (!file.exists()) return null
         return FileProvider.getUriForFile(
             context,

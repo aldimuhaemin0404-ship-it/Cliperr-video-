@@ -4,6 +4,7 @@ import com.example.data.ai.PlaceholderAiClipperRepository
 import com.example.data.local.toDomain
 import com.example.data.local.toEntity
 import com.example.data.network.SocialLinkResolver
+import com.example.data.network.UrlSecurityValidator
 import com.example.domain.model.AspectRatioPreset
 import com.example.domain.model.CaptionTone
 import com.example.domain.model.ClipSegment
@@ -18,7 +19,9 @@ import com.example.media.RoyaltyFreeMusicCatalog
 import com.example.media.VideoTransitionEffects
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -178,5 +181,31 @@ class ClipperLogicUnitTest {
             SocialSourcePlatform.DIRECT_LINK,
             resolver.detectPlatform("https://cdn.example.com/clip.mp4")
         )
+    }
+
+    @Test
+    fun urlSecurityValidatorBlocksPrivateLocalMetadataAndUnsafeSchemes() {
+        assertNotNull(UrlSecurityValidator.normalizeAndValidateExternalHttpUrl("https://youtu.be/dQw4w9WgXcQ"))
+        assertNotNull(UrlSecurityValidator.normalizeAndValidateExternalHttpUrl("example.com/clip.mp4"))
+
+        val blockedInputs = listOf(
+            "http://127.0.0.1:8080/admin",
+            "http://localhost/secret",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.5/internal.mp4",
+            "http://192.168.1.10/video.mp4",
+            "http://172.16.0.1/video.mp4",
+            "http://[::1]/video.mp4",
+            "http://[::ffff:127.0.0.1]/video.mp4",
+            "http://user:pass@example.com/video.mp4",
+            "file:///data/user/0/com.aistudio.aiclipper.vkxmqz/databases/clipper.db",
+            "javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>"
+        )
+        blockedInputs.forEach { bad ->
+            assertFalse("Expected blocked URL: $bad", UrlSecurityValidator.isSafeExternalHttpUrl(bad))
+            assertNull("Expected music track rejection for: $bad", RoyaltyFreeMusicCatalog.buildCustomUrlTrack(bad))
+            assertNull("Expected link extractor rejection for: $bad", SocialLinkResolver().extractFirstUrl(bad))
+        }
     }
 }

@@ -350,4 +350,68 @@ test("Security bounds reject cross-user access, @DocumentId id key, orphaned seg
         title: "A".repeat(250),
       })
   );
+
+  // Reject unsafe javascript: and file:// URI schemes in sourceUri and selectedMusicUrl
+  await assertFails(
+    aliceDb
+      .collection("users")
+      .doc(ALICE_UID)
+      .collection("projects")
+      .doc("proj_bad_uri")
+      .set({
+        ...validProjectPayload(ALICE_UID, now),
+        sourceUri: "javascript:alert(1)",
+      })
+  );
+  await assertFails(
+    aliceDb
+      .collection("users")
+      .doc(ALICE_UID)
+      .collection("segments")
+      .doc("seg_bad_music_uri")
+      .set({
+        ...validSegmentPayload(ALICE_UID, "proj_10", now),
+        selectedMusicUrl: "file:///data/user/0/secret.db",
+      })
+  );
+
+  // Reject invalid segment time range (endMs <= startMs)
+  await assertFails(
+    aliceDb
+      .collection("users")
+      .doc(ALICE_UID)
+      .collection("segments")
+      .doc("seg_bad_time")
+      .set({
+        ...validSegmentPayload(ALICE_UID, "proj_10", now),
+        startMs: 12000,
+        endMs: 12000,
+      })
+  );
+
+  // Reject path traversal in export filePath
+  await assertFails(
+    aliceDb
+      .collection("users")
+      .doc(ALICE_UID)
+      .collection("exports")
+      .doc("exp_traversal")
+      .set({
+        ...validExportPayload(ALICE_UID, "proj_10", now),
+        filePath: "/data/user/0/files/clips/../../databases/clipper.db",
+      })
+  );
+
+  // Reject immutable localProjectId mutation on update
+  await assertFails(
+    aliceDb
+      .collection("users")
+      .doc(ALICE_UID)
+      .collection("projects")
+      .doc("proj_10")
+      .update({
+        localProjectId: 999,
+        updatedAt: new Date(Date.now() - 100),
+      })
+  );
 });

@@ -59,6 +59,23 @@ service cloud.firestore {
       return val is string && val in ['HD_1080P', 'HD_720P', 'SD_480P'];
     }
 
+    function isSafeUriString(val, maxLen) {
+      return val is string &&
+             val.size() >= 1 &&
+             val.size() <= maxLen &&
+             !val.matches('(?i)^\\s*(javascript|data|vbscript|file):.*') &&
+             val.matches('(?i)^(https://|http://|content://|synth://|local://).*');
+    }
+
+    function isSafeGalleryUri(val, maxLen) {
+      return val is string &&
+             val.size() >= 1 &&
+             val.size() <= maxLen &&
+             !val.matches('.*\\.\\..*') &&
+             !val.matches('(?i)^\\s*(javascript|data|vbscript):.*') &&
+             val.matches('(?i)^(https://|http://|content://|file://).*');
+    }
+
     // 3. Entity Validation Blueprints
     function isValidUserProfile(data, userId) {
       return data.userId is string &&
@@ -68,7 +85,7 @@ service cloud.firestore {
              data.displayName.size() >= 1 &&
              data.displayName.size() <= 120 &&
              (!('email' in data) || (data.email is string && data.email.size() <= 160)) &&
-             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             (!('photoUrl' in data) || isSafeUriString(data.photoUrl, 500)) &&
              isValidTimestamp(data.createdAt) &&
              isValidTimestamp(data.updatedAt);
     }
@@ -82,9 +99,7 @@ service cloud.firestore {
              data.title is string &&
              data.title.size() >= 1 &&
              data.title.size() <= 200 &&
-             data.sourceUri is string &&
-             data.sourceUri.size() >= 1 &&
-             data.sourceUri.size() <= 1000 &&
+             isSafeUriString(data.sourceUri, 1000) &&
              data.durationMs is int &&
              data.durationMs >= 0 &&
              data.durationMs <= 86400000 &&
@@ -99,7 +114,7 @@ service cloud.firestore {
              data.focusTopic.size() <= 200 &&
              (!('sourcePlatformName' in data) || (data.sourcePlatformName is string && data.sourcePlatformName.size() <= 80)) &&
              (!('authorName' in data) || (data.authorName is string && data.authorName.size() <= 120)) &&
-             (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 1000)) &&
+             (!('thumbnailUrl' in data) || isSafeUriString(data.thumbnailUrl, 1000)) &&
              data.hasPlayableStream is bool &&
              data.placeholderAi is bool &&
              isValidTimestamp(data.createdAt) &&
@@ -133,7 +148,7 @@ service cloud.firestore {
              data.startMs >= 0 &&
              data.startMs <= 86400000 &&
              data.endMs is int &&
-             data.endMs >= 0 &&
+             data.endMs > data.startMs &&
              data.endMs <= 86400000 &&
              isValidAspectRatio(data.aspectRatio) &&
              isValidTone(data.tone) &&
@@ -154,7 +169,7 @@ service cloud.firestore {
              data.includeAudio is bool &&
              (!('selectedMusicTrackId' in data) || (data.selectedMusicTrackId is string && data.selectedMusicTrackId.size() <= 120)) &&
              (!('selectedMusicTitle' in data) || (data.selectedMusicTitle is string && data.selectedMusicTitle.size() <= 200)) &&
-             (!('selectedMusicUrl' in data) || (data.selectedMusicUrl is string && data.selectedMusicUrl.size() <= 1000)) &&
+             (!('selectedMusicUrl' in data) || isSafeUriString(data.selectedMusicUrl, 1000)) &&
              data.musicVolume is number &&
              data.musicVolume >= 0.0 &&
              data.musicVolume <= 1.0 &&
@@ -184,13 +199,14 @@ service cloud.firestore {
              data.filePath is string &&
              data.filePath.size() >= 1 &&
              data.filePath.size() <= 1000 &&
+             !data.filePath.matches('.*\\.\\..*') &&
              data.durationMs is int &&
              data.durationMs >= 0 &&
              data.durationMs <= 86400000 &&
              data.fileSizeBytes is int &&
              data.fileSizeBytes >= 0 &&
              isValidAspectRatio(data.aspectRatio) &&
-             (!('galleryUri' in data) || (data.galleryUri is string && data.galleryUri.size() <= 1000)) &&
+             (!('galleryUri' in data) || isSafeGalleryUri(data.galleryUri, 1000)) &&
              isValidTimestamp(data.createdAt) &&
              isValidTimestamp(data.updatedAt);
     }
@@ -240,9 +256,10 @@ service cloud.firestore {
                          isOwner(userId) &&
                          isValidCloudClipProject(incoming(), userId) &&
                          incoming().userId == existing().userId &&
+                         incoming().localProjectId == existing().localProjectId &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().diff(existing()).affectedKeys().hasOnly([
-                           'localProjectId', 'title', 'sourceUri', 'durationMs',
+                           'title', 'sourceUri', 'durationMs',
                            'width', 'height', 'targetPlatform', 'focusTopic',
                            'sourcePlatformName', 'authorName', 'thumbnailUrl',
                            'hasPlayableStream', 'placeholderAi', 'updatedAt'
@@ -287,9 +304,10 @@ service cloud.firestore {
                          isValidCloudClipSegment(incoming(), userId) &&
                          incoming().userId == existing().userId &&
                          incoming().projectCloudId == existing().projectCloudId &&
+                         incoming().localProjectId == existing().localProjectId &&
+                         incoming().localSegmentId == existing().localSegmentId &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().diff(existing()).affectedKeys().hasOnly([
-                           'localProjectId', 'localSegmentId',
                            'title', 'hookLine', 'viralScore', 'rationale', 'captionText',
                            'hashtags', 'startMs', 'endMs', 'aspectRatio', 'tone',
                            'videoFilter', 'brightness', 'showSubtitles', 'showIntroHook',
@@ -329,9 +347,11 @@ service cloud.firestore {
                          isValidCloudExportedClip(incoming(), userId) &&
                          incoming().userId == existing().userId &&
                          incoming().projectCloudId == existing().projectCloudId &&
+                         incoming().localExportId == existing().localExportId &&
+                         incoming().localProjectId == existing().localProjectId &&
+                         incoming().localSegmentId == existing().localSegmentId &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().diff(existing()).affectedKeys().hasOnly([
-                           'localExportId', 'localProjectId', 'localSegmentId',
                            'title', 'filePath', 'durationMs', 'fileSizeBytes',
                            'aspectRatio', 'galleryUri', 'updatedAt'
                          ]);

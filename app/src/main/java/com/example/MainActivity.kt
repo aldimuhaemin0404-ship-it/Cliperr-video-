@@ -10,6 +10,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.data.firebase.configureAppCheck
+import com.example.data.network.SocialLinkResolver
+import com.example.data.network.UrlSecurityValidator
 import com.example.ui.navigation.AiClipperApp
 import com.example.ui.theme.AiClipperTheme
 
@@ -44,17 +46,20 @@ class MainActivity : ComponentActivity() {
     private fun extractSharedText(intent: Intent?): String? {
         if (intent == null) return null
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
-            return intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
+            val rawText = intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: return null
+            return SocialLinkResolver().extractFirstUrl(rawText)
         }
         if (intent.action == Intent.ACTION_VIEW) {
             val dataUri = intent.data ?: return null
             val embeddedUrl = dataUri.getQueryParameter("url")
-            if (!embeddedUrl.isNullOrBlank()) return embeddedUrl
+            if (!embeddedUrl.isNullOrBlank()) {
+                return UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(embeddedUrl)
+            }
             val scheme = dataUri.scheme?.lowercase()
             if (scheme == "http" || scheme == "https") {
                 val urlStr = dataUri.toString()
                 if (!urlStr.contains("asia-northeast1.run.app")) {
-                    return urlStr
+                    return UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(urlStr)
                 }
             }
         }

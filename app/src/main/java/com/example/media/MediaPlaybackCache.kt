@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.example.data.network.UrlSecurityValidator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -56,7 +57,7 @@ object MediaPlaybackCache {
     fun buildCacheDataSourceFactory(context: Context): CacheDataSource.Factory {
         val appContext = context.applicationContext
         val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
+            .setAllowCrossProtocolRedirects(false)
             .setConnectTimeoutMs(8_000)
             .setReadTimeoutMs(10_000)
             .setUserAgent("AldiAIClipper/1.0")
@@ -101,6 +102,7 @@ object MediaPlaybackCache {
     ) = withContext(Dispatchers.IO) {
         val scheme = Uri.parse(uriString).scheme?.lowercase()
         if (scheme != "http" && scheme != "https") return@withContext
+        if (!UrlSecurityValidator.isSafeExternalHttpUrl(uriString)) return@withContext
         if (!activePrewarms.add(uriString)) return@withContext
 
         try {

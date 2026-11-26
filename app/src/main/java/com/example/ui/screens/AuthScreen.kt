@@ -173,7 +173,7 @@ fun AuthScreen(
                     )
                 }
 
-                if (errorMessage != null) {
+                errorMessage?.let { msg ->
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -181,7 +181,7 @@ fun AuthScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = errorMessage!!,
+                            text = msg,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.padding(12.dp)

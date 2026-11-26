@@ -197,7 +197,6 @@ internal fun ClipProject.toFirestoreCreateMap(userId: String): Map<String, Any> 
 
 internal fun ClipProject.toFirestoreUpdateMap(): Map<String, Any> =
     mapOf<String, Any?>(
-        "localProjectId" to id.coerceAtLeast(0L),
         "title" to title.trim().ifEmpty { "Proyek Klip" }.take(200),
         "sourceUri" to sourceUri.trim().ifEmpty { "local://video" }.take(1000),
         "durationMs" to durationMs.coerceIn(0L, 86_400_000L),
@@ -256,8 +255,6 @@ internal fun ClipSegment.toFirestoreCreateMap(
 
 internal fun ClipSegment.toFirestoreUpdateMap(): Map<String, Any> =
     mapOf<String, Any?>(
-        "localProjectId" to projectId.coerceAtLeast(0L),
-        "localSegmentId" to id.coerceAtLeast(0L),
         "title" to title.trim().ifEmpty { "Klip Sorotan" }.take(200),
         "hookLine" to hookLine.take(300),
         "viralScore" to viralScore.toLong().coerceIn(0L, 100L),
@@ -311,9 +308,6 @@ internal fun ExportedClip.toFirestoreCreateMap(
 
 internal fun ExportedClip.toFirestoreUpdateMap(): Map<String, Any> =
     mapOf<String, Any?>(
-        "localExportId" to id.coerceAtLeast(0L),
-        "localProjectId" to projectId.coerceAtLeast(0L),
-        "localSegmentId" to segmentId.coerceAtLeast(0L),
         "title" to title.trim().ifEmpty { "Klip Ekspor" }.take(200),
         "filePath" to filePath.trim().ifEmpty { "exports/clip.mp4" }.take(1000),
         "durationMs" to durationMs.coerceIn(0L, 86_400_000L),

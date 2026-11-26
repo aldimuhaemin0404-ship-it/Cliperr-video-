@@ -606,6 +606,7 @@ class ClipperViewModel(
                 }
 
                 if (_editorState.value.project?.id == projectId) {
+                    var updatedSegForSync: ClipSegment? = null
                     _editorState.update { state ->
                         val seg = state.segment
                         val clampedSeg = seg?.let {
@@ -613,15 +614,16 @@ class ClipperViewModel(
                             val safeStart = it.startMs.coerceIn(0L, (safeEnd - 500L).coerceAtLeast(0L))
                             it.copy(startMs = safeStart, endMs = safeEnd)
                         }
-                        if (clampedSeg != null) {
-                            viewModelScope.launch { projectRepository.updateSegment(clampedSeg) }
-                            syncSegmentUpdateToCloud(clampedSeg)
-                        }
+                        updatedSegForSync = clampedSeg
                         state.copy(
                             project = updatedProject,
                             segment = clampedSeg,
                             thumbnails = thumbs
                         )
+                    }
+                    updatedSegForSync?.let { clampedSeg ->
+                        viewModelScope.launch { projectRepository.updateSegment(clampedSeg) }
+                        syncSegmentUpdateToCloud(clampedSeg)
                     }
                 }
                 _statusBannerMessage.value = "File video lokal ditautkan. Sekarang siap diputar dan diekspor ke MP4!"
@@ -1736,7 +1738,7 @@ class ClipperViewModel(
 
     fun deleteExportedClip(exportedClip: ExportedClip) {
         viewModelScope.launch {
-            runCatching { File(exportedClip.filePath).delete() }
+            mediaProcessor.deleteExportFileIfOwned(exportedClip)
             projectRepository.deleteExportedClip(exportedClip.id)
             firestoreRepository?.deleteExportedClip(exportedClip.id)
             _statusBannerMessage.value = "File ekspor dihapus."
@@ -1785,10 +1787,10 @@ class ClipperViewModel(
     fun enqueueSocialLinks(rawInput: String, startImmediately: Boolean = false) {
         val lines = rawInput
             .split(Regex("[\\r\\n]+"))
-            .map { line -> socialLinkResolver.extractFirstUrl(line) ?: line.trim() }
-            .filter { it.isNotBlank() }
+            .mapNotNull { line -> socialLinkResolver.extractFirstUrl(line) }
+            .distinct()
         if (lines.isEmpty()) {
-            _statusBannerMessage.value = "Masukkan minimal 1 tautan video yang valid."
+            _statusBannerMessage.value = "Masukkan minimal 1 tautan video eksternal yang valid dan aman."
             return
         }
         val cfg = _batchConfig.value

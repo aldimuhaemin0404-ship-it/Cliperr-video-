@@ -588,8 +588,9 @@ fun VideoClipPlayerPreview(
                         exoPlayer.pause()
                         showOverlayOnPlay = true
                     } else {
+                        val endLimit = latestEndMs
                         if (exoPlayer.currentPosition < latestStartMs ||
-                            (latestEndMs != null && exoPlayer.currentPosition >= latestEndMs!!)
+                            (endLimit != null && exoPlayer.currentPosition >= endLimit)
                         ) {
                             exoPlayer.seekTo(latestStartMs)
                         }

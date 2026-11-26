@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' https:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';" />
   <title>www.AldiAIClipper.com — Ubah Video Panjang Jadi Klip Viral AI</title>
   <meta name="description" content="Aldi AI Clipper (www.AldiAIClipper.com): Platform AI untuk memotong video panjang menjadi klip viral 9:16 &amp; 4:5 dengan Hook 3 Detik, Musik Bebas Royalti, dan Transisi Fade/Slide/Dissolve langsung di Web &amp; Android." />
   <style>
@@ -1436,10 +1437,17 @@
         document.getElementById('heroUrlInput').focus();
         return;
       }
+      const safeUrl = sanitizeExternalUrl(raw);
+      if (!safeUrl) {
+        showToast('URL tidak valid atau memakai skema/jaringan internal yang diblokir.');
+        document.getElementById('heroUrlInput').focus();
+        return;
+      }
       openStudio('home');
-      document.getElementById('homeUrlInput').value = raw;
-      loadHomeUrl();
-      startAiAnalysis();
+      document.getElementById('homeUrlInput').value = safeUrl;
+      if (loadHomeUrl()) {
+        startAiAnalysis();
+      }
     }
 
     function handleHeroFilePick(e) {
@@ -1523,7 +1531,12 @@
       document.getElementById('wsPlatformTag').textContent = meta.platform || 'SIAP';
 
       const v = document.getElementById('homeVideo');
-      v.src = meta.streamUrl;
+      const safeStream = sanitizeMediaSrc(meta.streamUrl);
+      if (!safeStream) {
+        showToast('Sumber video tidak aman atau format URL ditolak.');
+        return;
+      }
+      v.src = safeStream;
       v.load();
 
       const startSlider = document.getElementById('homeTrimStart');
@@ -1539,6 +1552,10 @@
     function handleSingleFilePick(e) {
       const file = e.target.files?.[0];
       if (!file) return;
+      if (file.type && !file.type.startsWith('video/')) {
+        showToast('Pilih file video yang valid (.mp4, .mov, .webm).');
+        return;
+      }
       const objUrl = URL.createObjectURL(file);
       const probe = document.createElement('video');
       probe.preload = 'metadata';
@@ -1569,8 +1586,15 @@
 
     function loadHomeUrl() {
       const raw = document.getElementById('homeUrlInput').value.trim();
-      if (!raw) return showToast('Masukkan URL video terlebih dahulu.');
-      const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      if (!raw) {
+        showToast('Masukkan URL video terlebih dahulu.');
+        return false;
+      }
+      const normalized = sanitizeExternalUrl(raw);
+      if (!normalized) {
+        showToast('URL tidak valid atau mengarah ke skema/jaringan lokal yang diblokir.');
+        return false;
+      }
       const isDirect = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(normalized);
       const platform = detectPlatform(normalized);
       const fallbackStream = POPULAR_VIDEOS[0].streamUrl;
@@ -1587,6 +1611,7 @@
       if (!isDirect) {
         showToast(`Link ${platform} dimuat dengan stream sampel agar langsung bisa diedit.`);
       }
+      return true;
     }
 
     function detectPlatform(url) {
@@ -2131,9 +2156,14 @@
       const clip = getActiveClip();
       const raw = document.getElementById('customMusicUrlInput')?.value.trim();
       if (!clip || !raw) return;
+      const safeUrl = sanitizeExternalUrl(raw);
+      if (!safeUrl) {
+        showToast('URL audio tidak valid atau mengarah ke skema/jaringan lokal yang diblokir.');
+        return;
+      }
       clip.musicId = 'custom';
-      clip.musicTitle = raw.split('/').pop()?.split('?')[0] || 'URL Audio Kustom';
-      clip.musicUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      clip.musicTitle = safeUrl.split('/').pop()?.split('?')[0] || 'URL Audio Kustom';
+      clip.musicUrl = safeUrl;
       showToast(`Musik URL "${clip.musicTitle}" dipasang!`);
       renderEditorScreen();
     }
@@ -2434,8 +2464,22 @@
           }
         };
 
-        vid.onerror = () => reject(new Error('Video cross-origin read blocked'));
-        setTimeout(() => { if (recorder.state === 'inactive') reject(new Error('Render timeout')); }, 3500);
+        const cleanupVideo = () => {
+          vid.pause();
+          vid.removeAttribute('src');
+          vid.load();
+        };
+
+        vid.onerror = () => {
+          cleanupVideo();
+          reject(new Error('Video cross-origin read blocked'));
+        };
+        setTimeout(() => {
+          if (recorder.state === 'inactive') {
+            cleanupVideo();
+            reject(new Error('Render timeout'));
+          }
+        }, 3500);
       });
     }
 
@@ -2444,10 +2488,11 @@
       document.getElementById('successSubtext').textContent = `${item.title} • ${item.dims} • ${item.isRecordedBlob ? 'File Video Siap Unduh' : 'Pratinjau Stream'}`;
       const frame = document.getElementById('successPlayerFrame');
       frame.className = `player-frame ${(ASPECT_RATIOS.find(r => r.id === item.ratio) || ASPECT_RATIOS[0]).css}`;
+      const safeMediaUrl = sanitizeMediaSrc(item.blobUrl) || POPULAR_VIDEOS[0].streamUrl;
       const v = document.getElementById('successVideo');
-      v.src = item.blobUrl;
+      v.src = safeMediaUrl;
       const dl = document.getElementById('successDownloadBtn');
-      dl.href = item.blobUrl;
+      dl.href = safeMediaUrl;
       dl.download = `${item.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.webm`;
     }
 
@@ -2476,7 +2521,7 @@
         'YouTube Shorts': 'https://studio.youtube.com/',
         'WhatsApp': 'https://wa.me/?text=' + encodeURIComponent(document.getElementById('shareCaptionInput').value)
       };
-      if (urls[platform]) window.open(urls[platform], '_blank');
+      if (urls[platform]) window.open(urls[platform], '_blank', 'noopener,noreferrer');
     }
 
     async function nativeWebShare() {
@@ -2494,8 +2539,8 @@
     }
 
     function handleMultiFilePick(e) {
-      const files = Array.from(e.target.files || []);
-      if (files.length === 0) return;
+      const files = Array.from(e.target.files || []).filter(f => !f.type || f.type.startsWith('video/'));
+      if (files.length === 0) return showToast('Pilih file video yang valid.');
       files.forEach(file => {
         appState.batchQueue.push({
           id: 'b_' + Math.random().toString(36).slice(2, 8),
@@ -2514,7 +2559,8 @@
     function enqueueHomeUrl() {
       const raw = document.getElementById('homeUrlInput').value.trim();
       if (!raw) return showToast('Masukkan URL video terlebih dahulu.');
-      const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      const url = sanitizeExternalUrl(raw);
+      if (!url) return showToast('URL tidak valid atau memakai jaringan lokal yang diblokir.');
       appState.batchQueue.push({
         id: 'b_' + Math.random().toString(36).slice(2, 8),
         label: url.replace(/^https?:\/\//, '').slice(0, 38),
@@ -2531,8 +2577,11 @@
     function enqueueBatchTextarea() {
       const lines = document.getElementById('batchUrlsInput').value.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
       if (lines.length === 0) return showToast('Tempel minimal 1 URL.');
+      let added = 0;
       lines.forEach(raw => {
-        const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+        const url = sanitizeExternalUrl(raw);
+        if (!url) return;
+        added++;
         appState.batchQueue.push({
           id: 'b_' + Math.random().toString(36).slice(2, 8),
           label: url.replace(/^https?:\/\//, '').slice(0, 38),
@@ -2542,6 +2591,7 @@
           detail: 'Siap diproses'
         });
       });
+      if (added === 0) return showToast('Tidak ada URL eksternal yang valid untuk dimasukkan.');
       document.getElementById('batchUrlsInput').value = '';
       updateBadges();
       renderBatchQueue();
@@ -2638,7 +2688,52 @@
     }
 
     function escapeHtml(str) {
-      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function isBlockedWebHost(hostname) {
+      const h = String(hostname || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+      if (!h) return true;
+      if (h === 'localhost' || h === 'localhost.localdomain' || h === 'metadata' || h === 'metadata.google.internal' || h === '::1') return true;
+      if (h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.localdomain') || h.endsWith('.arpa')) return true;
+      if (h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd')) return true;
+      if (/^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(h)) return true;
+      if (/^\d+$/.test(h.split('.').pop() || '') && !/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return true;
+      return false;
+    }
+
+    function sanitizeExternalUrl(raw) {
+      const clean = String(raw || '').trim();
+      if (!clean || /[\s\x00-\x1F\x7F]/.test(clean)) return null;
+      const schemeMatch = clean.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+      let candidate = clean;
+      if (schemeMatch) {
+        const scheme = schemeMatch[1].toLowerCase();
+        if (scheme !== 'http' && scheme !== 'https') return null;
+      } else {
+        if (clean.startsWith('/') || clean.startsWith('\\') || !clean.includes('.')) return null;
+        candidate = `https://${clean}`;
+      }
+      try {
+        const parsed = new URL(candidate);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        if (parsed.username || parsed.password) return null;
+        if (isBlockedWebHost(parsed.hostname)) return null;
+        return parsed.href;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function sanitizeMediaSrc(raw) {
+      const clean = String(raw || '').trim();
+      if (clean.startsWith('blob:')) return clean;
+      return sanitizeExternalUrl(clean);
     }
 
     function initPlatformChips() {
@@ -2669,9 +2764,10 @@
       const params = new URLSearchParams(window.location.search);
       const sharedUrl = params.get('url');
       const requestedScreen = params.get('screen');
-      if (sharedUrl) {
+      const safeSharedUrl = sharedUrl ? sanitizeExternalUrl(sharedUrl) : null;
+      if (safeSharedUrl) {
         openStudio('home');
-        document.getElementById('homeUrlInput').value = sharedUrl;
+        document.getElementById('homeUrlInput').value = safeSharedUrl;
         loadHomeUrl();
       } else if (requestedScreen) {
         openStudio(requestedScreen);

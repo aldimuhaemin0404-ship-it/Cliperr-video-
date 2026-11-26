@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import com.example.data.network.UrlSecurityValidator
 import com.example.domain.model.AudioAnalysisSummary
 import com.example.domain.model.CaptionTone
 import com.example.domain.model.MusicMood
@@ -146,7 +147,9 @@ object AudioMoodAnalyzer {
         return try {
             val scheme = uri.scheme?.lowercase()
             if (scheme == "http" || scheme == "https") {
-                extractor.setDataSource(uri.toString(), emptyMap())
+                val safeUrl = UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(uri.toString())
+                    ?: return RawAudioTelemetry(hasAudioTrack = true, dynamicVariance = 0.25f)
+                extractor.setDataSource(safeUrl, emptyMap())
             } else {
                 extractor.setDataSource(context, uri, null)
             }
