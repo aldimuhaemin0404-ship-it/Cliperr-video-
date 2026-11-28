@@ -118,7 +118,7 @@
     <string name="export_settings_quality">Kualitas</string>
     <string name="export_settings_subtitle_toggle">Subtitle Otomatis (Bahasa Indonesia)</string>
     <string name="export_settings_audio_toggle">Sertakan Audio Asli</string>
-    <string name="export_settings_start_cta">Ekspor Video</string>
+    <string name="export_settings_start_cta">Ekspor &amp; Simpan ke Galeri</string>
 
     <!-- Export Success & Share Screen -->
     <string name="export_success_title">Berhasil!</string>
@@ -174,6 +174,7 @@
     <string name="home_quick_url_hint">Tempel URL YouTube, TikTok, IG, atau link .mp4/.m3u8</string>
     <string name="home_quick_url_add_batch">Ke Antrean</string>
     <string name="home_quick_url_load_now">Muat URL</string>
+    <string name="studio_link_direct_export_cta">Ekspor Link ke Galeri</string>
 
     <!-- AI Audio Analysis & Royalty-Free Music -->
     <string name="editor_tool_music">Musik AI</string>
@@ -213,6 +214,13 @@
     <string name="auth_feature_security">Terlindungi oleh Google Sign-In &amp; Firebase App Check</string>
     <string name="account_sign_out">Keluar</string>
     <string name="cloud_sync_active">Cloud Sync Aktif</string>
+    <string name="auth_diagnostic_stage_prefix">Tahap:</string>
+    <string name="auth_diagnostic_recovery_prefix">Langkah Perbaikan:</string>
+    <string name="auth_diagnostic_show_details">Lihat Detail Log Auth</string>
+    <string name="auth_diagnostic_hide_details">Sembunyikan Detail Log</string>
+    <string name="auth_diagnostic_copy_log">Salin Log</string>
+    <string name="auth_diagnostic_copied">Tersalin</string>
+    <string name="auth_continue_local_studio">Masuk ke Studio (Mode Lokal)</string>
 
     <!-- Global Undo / Redo -->
     <string name="action_undo">Urungkan</string>

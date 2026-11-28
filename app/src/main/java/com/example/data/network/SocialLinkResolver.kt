@@ -8,6 +8,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.net.URI
 import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -29,7 +30,59 @@ class SocialLinkResolver(
 
         private val URL_EXTRACT_REGEX = Regex("""https?://[^\s<>"'\]\)]+""", RegexOption.IGNORE_CASE)
 
-        private val DIRECT_VIDEO_EXTENSIONS = listOf(".mp4", ".mov", ".webm", ".mkv", ".m3u8", ".mpd")
+        private val DIRECT_VIDEO_EXTENSIONS = listOf(".mp4", ".mov", ".webm", ".mkv", ".m4v", ".m3u8", ".mpd")
+
+        fun buildSafeEmbedUrl(rawUrl: String?): String? {
+            val normalized = UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(rawUrl) ?: return null
+            val uri = runCatching { URI(normalized) }.getOrNull() ?: return null
+            val host = uri.host.orEmpty().lowercase(Locale.ROOT)
+                .removePrefix("www.")
+                .removePrefix("m.")
+            val segments = uri.path.orEmpty().trim('/').split('/').filter { it.isNotBlank() }
+
+            val candidate: String? = when {
+                host == "youtu.be" -> {
+                    val id = segments.firstOrNull()?.takeIf { it.matches(Regex("^[a-zA-Z0-9_-]{6,20}$")) }
+                    id?.let { "https://www.youtube.com/embed/$it?playsinline=1&rel=0" }
+                }
+                host.contains("youtube.com") || host.contains("youtube-nocookie.com") -> {
+                    val id = when (segments.firstOrNull()) {
+                        "shorts", "embed", "live" -> segments.getOrNull(1)
+                        else -> extractQueryParam(uri.rawQuery, "v")
+                    }?.takeIf { it.matches(Regex("^[a-zA-Z0-9_-]{6,20}$")) }
+                    id?.let { "https://www.youtube.com/embed/$it?playsinline=1&rel=0" }
+                }
+                host.contains("vimeo.com") -> {
+                    val id = segments.lastOrNull()?.takeIf { it.matches(Regex("^[0-9]{5,15}$")) }
+                    id?.let { "https://player.vimeo.com/video/$it" }
+                }
+                host.contains("tiktok.com") -> {
+                    val videoIdx = segments.indexOf("video")
+                    val id = if (videoIdx >= 0) segments.getOrNull(videoIdx + 1) else null
+                    id?.takeIf { it.matches(Regex("^[0-9]{10,24}$")) }
+                        ?.let { "https://www.tiktok.com/embed/v2/$it" }
+                }
+                host.contains("instagram.com") -> {
+                    val kind = segments.firstOrNull()
+                    val code = if (kind == "reel" || kind == "reels" || kind == "p" || kind == "tv") {
+                        segments.getOrNull(1)
+                    } else null
+                    code?.takeIf { it.matches(Regex("^[a-zA-Z0-9_-]{5,30}$")) }
+                        ?.let { "https://www.instagram.com/p/$it/embed" }
+                }
+                else -> null
+            }
+
+            return candidate?.let { UrlSecurityValidator.normalizeAndValidateExternalHttpUrl(it) }
+        }
+
+        private fun extractQueryParam(rawQuery: String?, key: String): String? {
+            if (rawQuery.isNullOrBlank()) return null
+            return rawQuery.split('&').firstNotNullOfOrNull { pair ->
+                val parts = pair.split('=', limit = 2)
+                if (parts.firstOrNull() == key) parts.getOrNull(1)?.takeIf { it.isNotBlank() } else null
+            }
+        }
     }
 
     fun extractFirstUrl(rawText: String): String? {
@@ -138,9 +191,9 @@ class SocialLinkResolver(
         val resolvedDuration = (oEmbed?.durationSec ?: htmlMeta.durationSec)?.let { it * 1000L } ?: 60_000L
 
         val statusNote = if (candidateStream != null) {
-            "Stream video dari ${resolvedPlatform.displayName} siap diputar dan dipotong di Studio."
+            "Stream video dari ${resolvedPlatform.displayName} siap diputar, dipotong, dan diekspor langsung ke Galeri."
         } else {
-            "Tautan ${resolvedPlatform.displayName} berhasil dimuat. Ketuk 'Buka Link Asli' untuk membuka videonya, 'Analisis & Buat Klip AI' untuk menyusun ide klip, atau tautkan file video lokal untuk render MP4."
+            "Tautan ${resolvedPlatform.displayName} siap diputar di aplikasi. Karena kebijakan platform membatasi unduhan MP4 langsung dari halaman web, tempel URL video (.mp4 / .m3u8) atau pilih video dari galeri HP untuk langsung diekspor & disimpan ke Galeri."
         }
 
         ResolvedSocialVideo(
@@ -164,6 +217,21 @@ class SocialLinkResolver(
         val isDirectVideo: Boolean
     )
 
+    private fun isDirectVideoHeaderMatch(
+        resolvedUrl: String,
+        contentType: String,
+        contentDisposition: String
+    ): Boolean {
+        val normalizedUrl = resolvedUrl.lowercase(Locale.ROOT).substringBefore('?')
+        val normalizedDisp = contentDisposition.lowercase(Locale.ROOT)
+        return contentType.startsWith("video/") ||
+            contentType.contains("mpegurl") ||
+            contentType.contains("dash+xml") ||
+            DIRECT_VIDEO_EXTENSIONS.any { ext ->
+                normalizedUrl.endsWith(ext) || normalizedDisp.contains(ext)
+            }
+    }
+
     private fun inspectUrlHeaders(url: String): UrlHeaderInfo {
         if (!UrlSecurityValidator.isSafeExternalHttpUrl(url)) {
             return UrlHeaderInfo(finalUrl = url, contentType = "", isDirectVideo = false)
@@ -185,11 +253,8 @@ class SocialLinkResolver(
                     return@use null
                 }
                 val contentType = response.header("Content-Type").orEmpty().lowercase(Locale.ROOT)
-                val isVideo = contentType.startsWith("video/") ||
-                    contentType.contains("mpegurl") ||
-                    DIRECT_VIDEO_EXTENSIONS.any {
-                        resolvedUrl.lowercase(Locale.ROOT).substringBefore('?').endsWith(it)
-                    }
+                val contentDisposition = response.header("Content-Disposition").orEmpty()
+                val isVideo = isDirectVideoHeaderMatch(resolvedUrl, contentType, contentDisposition)
                 if (response.isSuccessful || isVideo) {
                     UrlHeaderInfo(resolvedUrl, contentType, isVideo)
                 } else {
@@ -213,11 +278,8 @@ class SocialLinkResolver(
                     return@use UrlHeaderInfo(finalUrl = url, contentType = "", isDirectVideo = false)
                 }
                 val contentType = response.header("Content-Type").orEmpty().lowercase(Locale.ROOT)
-                val isVideo = contentType.startsWith("video/") ||
-                    contentType.contains("mpegurl") ||
-                    DIRECT_VIDEO_EXTENSIONS.any {
-                        resolvedUrl.lowercase(Locale.ROOT).substringBefore('?').endsWith(it)
-                    }
+                val contentDisposition = response.header("Content-Disposition").orEmpty()
+                val isVideo = isDirectVideoHeaderMatch(resolvedUrl, contentType, contentDisposition)
                 UrlHeaderInfo(resolvedUrl, contentType, isVideo)
             }
         }.getOrElse {
@@ -290,7 +352,7 @@ class SocialLinkResolver(
                     return@use HtmlMetadata()
                 }
                 val rawBytes = response.body?.byteStream()?.use { stream ->
-                    val buffer = ByteArray(512 * 1024)
+                    val buffer = ByteArray(1024 * 1024)
                     var total = 0
                     while (total < buffer.size) {
                         val read = stream.read(buffer, total, buffer.size - total)
@@ -321,6 +383,9 @@ class SocialLinkResolver(
                     ?: extractJsonField(rawBytes, "playAddr")
                     ?: extractJsonField(rawBytes, "downloadAddr")
                     ?: extractJsonField(rawBytes, "video_url")
+                    ?: extractJsonField(rawBytes, "videoUrl")
+                    ?: extractJsonField(rawBytes, "mp4_url")
+                    ?: extractJsonField(rawBytes, "mp4Url")
                     ?: extractJsonField(rawBytes, "hd_src")
                     ?: extractJsonField(rawBytes, "sd_src")
                     ?: extractVideoTagSrc(rawBytes)
@@ -383,17 +448,21 @@ class SocialLinkResolver(
     }
 
     private fun extractVideoTagSrc(html: String): String? {
-        val videoRegex = Regex("""<(?:video|source)[^>]+src\s*=\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
+        val videoRegex = Regex("""<(?:video|source)[^>]+(?:src|data-src)\s*=\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
         return videoRegex.find(html)?.groupValues?.getOrNull(1)
     }
 
-    private fun isLikelyPlayableVideoUrl(url: String): Boolean {
+    internal fun isLikelyPlayableVideoUrl(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT).substringBefore('?')
         if (lower.endsWith(".html") || lower.endsWith(".htm") || lower.contains("/embed/")) {
             return false
         }
         return DIRECT_VIDEO_EXTENSIONS.any { lower.endsWith(it) } ||
-            url.contains("mime=video", ignoreCase = true)
+            url.contains("mime=video", ignoreCase = true) ||
+            url.contains("mime_type=video", ignoreCase = true) ||
+            url.contains("content_type=video", ignoreCase = true) ||
+            url.contains("type=video/mp4", ignoreCase = true) ||
+            url.contains("format=mp4", ignoreCase = true)
     }
 
     private fun decodeHtmlEntities(input: String): String {

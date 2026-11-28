@@ -206,6 +206,43 @@ class ClipperLogicUnitTest {
             assertFalse("Expected blocked URL: $bad", UrlSecurityValidator.isSafeExternalHttpUrl(bad))
             assertNull("Expected music track rejection for: $bad", RoyaltyFreeMusicCatalog.buildCustomUrlTrack(bad))
             assertNull("Expected link extractor rejection for: $bad", SocialLinkResolver().extractFirstUrl(bad))
+            assertNull("Expected embed rejection for: $bad", SocialLinkResolver.buildSafeEmbedUrl(bad))
         }
+    }
+
+    @Test
+    fun socialLinkResolverBuildsSafeEmbedUrlsForPopularPlatforms() {
+        assertEquals(
+            "https://www.youtube.com/embed/dQw4w9WgXcQ?playsinline=1&rel=0",
+            SocialLinkResolver.buildSafeEmbedUrl("https://youtu.be/dQw4w9WgXcQ")
+        )
+        assertEquals(
+            "https://www.youtube.com/embed/abcXYZ12345?playsinline=1&rel=0",
+            SocialLinkResolver.buildSafeEmbedUrl("https://www.youtube.com/shorts/abcXYZ12345")
+        )
+        assertEquals(
+            "https://www.tiktok.com/embed/v2/7312345678901234567",
+            SocialLinkResolver.buildSafeEmbedUrl("https://www.tiktok.com/@creator/video/7312345678901234567")
+        )
+        assertEquals(
+            "https://www.instagram.com/p/C9xYz123AbC/embed",
+            SocialLinkResolver.buildSafeEmbedUrl("https://www.instagram.com/reel/C9xYz123AbC/")
+        )
+        assertEquals(
+            "https://player.vimeo.com/video/987654321",
+            SocialLinkResolver.buildSafeEmbedUrl("https://vimeo.com/987654321")
+        )
+    }
+
+    @Test
+    fun socialLinkResolverDetectsPlayableVideoStreamsAndRejectsHtmlPages() {
+        val resolver = SocialLinkResolver()
+        assertTrue(resolver.isLikelyPlayableVideoUrl("https://cdn.example.com/reel/clip.mp4?token=abc"))
+        assertTrue(resolver.isLikelyPlayableVideoUrl("https://cdn.example.com/hls/playlist.m3u8"))
+        assertTrue(resolver.isLikelyPlayableVideoUrl("https://cdn.example.com/video.m4v"))
+        assertTrue(resolver.isLikelyPlayableVideoUrl("https://cdn.example.com/stream?mime_type=video_mp4"))
+        assertTrue(resolver.isLikelyPlayableVideoUrl("https://cdn.example.com/download?format=mp4"))
+        assertFalse(resolver.isLikelyPlayableVideoUrl("https://www.youtube.com/embed/dQw4w9WgXcQ"))
+        assertFalse(resolver.isLikelyPlayableVideoUrl("https://example.com/watch.html"))
     }
 }

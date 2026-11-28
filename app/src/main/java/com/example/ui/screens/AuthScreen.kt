@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,10 +19,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.MovieCreation
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
@@ -30,8 +38,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,14 +55,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import com.example.R
+import com.example.ui.auth.AuthFailureDetail
+import com.example.ui.auth.LocalGoogleSession
+import com.example.ui.auth.LocalGoogleSessionStore
 import com.example.ui.auth.attemptAutoSignIn
 import com.example.ui.auth.onGoogleSignInClicked
 import com.example.ui.components.AiRobotMascot
@@ -61,21 +77,27 @@ import com.example.ui.theme.BrandNeonGradient
 import com.example.ui.theme.CosmicBackground
 import com.example.ui.theme.CosmicOutline
 import com.example.ui.theme.CosmicSurface
+import com.example.ui.theme.CosmicSurfaceElevated
 import com.example.ui.theme.FuturisticCyan
 import com.example.ui.theme.NeonPurple
+import com.example.ui.theme.StudioAmber
 
 @Composable
 fun AuthScreen(
     onAuthSuccess: () -> Unit,
+    onLocalModeSuccess: (LocalGoogleSession) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
 
     var isCheckingSession by remember { mutableStateOf(true) }
     var isSigningIn by remember { mutableStateOf(false) }
-    var authNoticeMessage by remember { mutableStateOf<String?>(null) }
+    var authFailureDetail by remember { mutableStateOf<AuthFailureDetail?>(null) }
+    var showTechnicalDetails by remember { mutableStateOf(false) }
+    var copiedDiagnostic by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         attemptAutoSignIn(
@@ -88,7 +110,14 @@ fun AuthScreen(
             onUnauthenticated = {
                 isCheckingSession = false
             },
-            scope = scope
+            scope = scope,
+            onAuthDiagnostic = { detail ->
+                authFailureDetail = detail
+            },
+            onLocalGoogleSignIn = { localSession ->
+                isCheckingSession = false
+                onLocalModeSuccess(localSession)
+            }
         )
     }
 
@@ -101,6 +130,7 @@ fun AuthScreen(
                 )
             )
             .windowInsetsPadding(WindowInsets.safeDrawing)
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -110,7 +140,7 @@ fun AuthScreen(
             border = BorderStroke(1.dp, NeonPurple.copy(alpha = 0.6f)),
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 480.dp)
+                .widthIn(max = 500.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -140,7 +170,7 @@ fun AuthScreen(
                     }
                 }
 
-                AiRobotMascot(modifier = Modifier.size(116.dp))
+                AiRobotMascot(modifier = Modifier.size(110.dp))
 
                 Text(
                     text = stringResource(R.string.auth_title),
@@ -174,36 +204,33 @@ fun AuthScreen(
                     )
                 }
 
-                authNoticeMessage?.let { msg ->
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = CosmicBackground.copy(alpha = 0.85f),
-                        border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.65f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Info,
-                                contentDescription = null,
-                                tint = FuturisticCyan,
-                                modifier = Modifier.size(18.dp)
+                authFailureDetail?.let { detail ->
+                    AuthDiagnosticCard(
+                        detail = detail,
+                        expanded = showTechnicalDetails,
+                        copied = copiedDiagnostic,
+                        onToggleExpanded = { showTechnicalDetails = !showTechnicalDetails },
+                        onCopyLog = {
+                            clipboardManager.setText(AnnotatedString(detail.toCopyableDiagnosticReport()))
+                            copiedDiagnostic = true
+                        },
+                        onContinueLocalMode = {
+                            val session = LocalGoogleSession(
+                                displayName = "Kreator Studio (Lokal)",
+                                accountLabel = "",
+                                noticeMessage = "Mode Studio Lokal aktif (${detail.authCode}) • Semua fitur edit & ekspor MP4 siap dipakai."
                             )
-                            Text(
-                                text = msg,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.92f)
-                            )
+                            LocalGoogleSessionStore.save(context, session)
+                            onLocalModeSuccess(session)
                         }
-                    }
+                    )
                 }
 
                 Button(
                     onClick = {
-                        authNoticeMessage = null
+                        authFailureDetail = null
+                        showTechnicalDetails = false
+                        copiedDiagnostic = false
                         isSigningIn = true
                         onGoogleSignInClicked(
                             context = context,
@@ -212,13 +239,17 @@ fun AuthScreen(
                                 isSigningIn = false
                                 onAuthSuccess()
                             },
-                            onAuthError = { msg ->
+                            onAuthError = { detail ->
                                 isSigningIn = false
-                                authNoticeMessage = msg
+                                authFailureDetail = detail
                             },
                             scope = scope,
                             onAuthCancelled = {
                                 isSigningIn = false
+                            },
+                            onLocalGoogleSignIn = { localSession ->
+                                isSigningIn = false
+                                onLocalModeSuccess(localSession)
                             }
                         )
                     },
@@ -255,6 +286,201 @@ fun AuthScreen(
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthDiagnosticCard(
+    detail: AuthFailureDetail,
+    expanded: Boolean,
+    copied: Boolean,
+    onToggleExpanded: () -> Unit,
+    onCopyLog: () -> Unit,
+    onContinueLocalMode: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = CosmicBackground.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, StudioAmber.copy(alpha = 0.72f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("auth_diagnostic_card")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = detail.headline,
+                        tint = StudioAmber,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = detail.headline,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = StudioAmber.copy(alpha = 0.16f),
+                    border = BorderStroke(1.dp, StudioAmber.copy(alpha = 0.45f))
+                ) {
+                    Text(
+                        text = detail.authCode,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = StudioAmber,
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .testTag("auth_diagnostic_code")
+                    )
+                }
+            }
+
+            Text(
+                text = "${stringResource(R.string.auth_diagnostic_stage_prefix)} ${detail.stage.label} • ${detail.category.label}",
+                style = MaterialTheme.typography.labelSmall,
+                color = FuturisticCyan
+            )
+
+            Text(
+                text = detail.reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.92f),
+                modifier = Modifier.testTag("auth_diagnostic_reason")
+            )
+
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = CosmicSurfaceElevated.copy(alpha = 0.85f),
+                border = BorderStroke(1.dp, CosmicOutline.copy(alpha = 0.55f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "${stringResource(R.string.auth_diagnostic_recovery_prefix)} ${detail.recoveryHint}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.84f),
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+
+            OutlinedButton(
+                onClick = onContinueLocalMode,
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.8f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .minimumInteractiveComponentSize()
+                    .testTag("auth_local_mode_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MovieCreation,
+                    contentDescription = null,
+                    tint = FuturisticCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.auth_continue_local_studio),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = FuturisticCyan
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .clickable(onClick = onToggleExpanded)
+                        .padding(vertical = 4.dp)
+                        .testTag("auth_diagnostic_toggle")
+                ) {
+                    Text(
+                        text = if (expanded) {
+                            stringResource(R.string.auth_diagnostic_hide_details)
+                        } else {
+                            stringResource(R.string.auth_diagnostic_show_details)
+                        },
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = FuturisticCyan
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                        tint = FuturisticCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                TextButton(
+                    onClick = onCopyLog,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("auth_copy_log_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ContentCopy,
+                        contentDescription = stringResource(R.string.auth_diagnostic_copy_log),
+                        tint = FuturisticCyan,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (copied) {
+                            stringResource(R.string.auth_diagnostic_copied)
+                        } else {
+                            stringResource(R.string.auth_diagnostic_copy_log)
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = FuturisticCyan
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF05070E),
+                    border = BorderStroke(1.dp, CosmicOutline.copy(alpha = 0.7f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("auth_technical_details")
+                ) {
+                    Text(
+                        text = detail.technicalSummary,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = Color.White.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(10.dp)
+                    )
                 }
             }
         }

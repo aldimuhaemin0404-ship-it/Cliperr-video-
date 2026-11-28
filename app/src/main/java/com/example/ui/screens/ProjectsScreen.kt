@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -33,6 +37,7 @@ import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -102,12 +107,21 @@ fun ProjectsScreen(
     onToggleFavorite: (ClipSegment) -> Unit,
     onBookmarkAllFavorites: () -> Unit,
     onMergeAllWithTransitions: () -> Unit = {},
+    onAttachLocalVideo: (Long, Uri) -> Unit = { _, _ -> },
     onGoToStudio: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var favoritesOnly by remember { mutableStateOf(false) }
     val selectedProject = remember(projects, selectedProjectId) {
         projects.firstOrNull { it.id == selectedProjectId } ?: projects.firstOrNull()
+    }
+    val attachVideoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val activeProj = selectedProject
+        if (uri != null && activeProj != null) {
+            onAttachLocalVideo(activeProj.id, uri)
+        }
     }
     val displayedSegments = remember(segments, favoritesOnly) {
         if (favoritesOnly) segments.filter { it.isFavorite } else segments
@@ -265,6 +279,56 @@ fun ProjectsScreen(
                         }
 
                         AiDemoNoticeBanner(compact = true)
+
+                        if (selectedProject != null && !selectedProject.hasPlayableStream) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = CosmicSurfaceElevated,
+                                border = BorderStroke(1.2.dp, FuturisticCyan.copy(alpha = 0.65f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("projects_missing_video_card")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Video Lokal Belum Terhubung",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = FuturisticCyan
+                                    )
+                                    Text(
+                                        text = "Proyek ini berasal dari link ${selectedProject.sourcePlatformName ?: "sosial media"}. Pilih file video dari HP agar semua klip bisa langsung diputar & diekspor ke MP4.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.9f)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            attachVideoLauncher.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = NeonPurple,
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .minimumInteractiveComponentSize()
+                                            .testTag("projects_attach_local_video_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.VideoLibrary,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Pilih File Video dari HP")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 

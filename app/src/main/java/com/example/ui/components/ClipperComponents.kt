@@ -1,8 +1,15 @@
 package com.example.ui.components
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -109,6 +116,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.data.network.SocialLinkResolver
 import com.example.data.network.UrlSecurityValidator
 import com.example.domain.model.AspectRatioPreset
 import com.example.domain.model.ExportJobStatus
@@ -135,6 +143,7 @@ import com.example.ui.theme.StudioEmeraldContainer
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun SocialLinkPreviewCard(
     title: String,
@@ -147,6 +156,14 @@ fun SocialLinkPreviewCard(
     originalUrl: String? = null
 ) {
     val uriHandler = LocalUriHandler.current
+    val safeOriginalUrl = remember(originalUrl) {
+        originalUrl?.takeIf { UrlSecurityValidator.isSafeExternalHttpUrl(it) }
+    }
+    val embedPlayerUrl = remember(originalUrl) {
+        SocialLinkResolver.buildSafeEmbedUrl(originalUrl)
+    }
+    var showEmbeddedPlayer by remember(originalUrl) { mutableStateOf(false) }
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -156,78 +173,181 @@ fun SocialLinkPreviewCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(190.dp)
-                    .background(Color(0xFF0E131D)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!thumbnailUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = thumbnailUrl,
-                        contentDescription = title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+            if (showEmbeddedPlayer && embedPlayerUrl != null) {
+                var webViewRef by remember(embedPlayerUrl) { mutableStateOf<WebView?>(null) }
+
+                DisposableEffect(embedPlayerUrl) {
+                    onDispose {
+                        webViewRef?.apply {
+                            stopLoading()
+                            loadUrl("about:blank")
+                            destroy()
+                        }
+                        webViewRef = null
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                        .background(Color.Black)
+                        .testTag("social_link_embedded_player")
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                layoutParams = FrameLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.allowFileAccess = false
+                                settings.allowContentAccess = false
+                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                webChromeClient = WebChromeClient()
+                                webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView?,
+                                        request: WebResourceRequest?
+                                    ): Boolean {
+                                        val target = request?.url?.toString()
+                                        return !UrlSecurityValidator.isSafeExternalHttpUrl(target)
+                                    }
+                                }
+                                webViewRef = this
+                                loadUrl(embedPlayerUrl)
+                            }
+                        },
+                        update = { view ->
+                            if (view.url != embedPlayerUrl) {
+                                view.loadUrl(embedPlayerUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
                     )
-                    Box(
+
+                    IconButton(
+                        onClick = { showEmbeddedPlayer = false },
                         modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color(0x33000000),
-                                        Color(0xCC0B0E14)
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.68f))
+                            .minimumInteractiveComponentSize()
+                            .testTag("close_social_embed_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Tutup pemutar",
+                            tint = Color.White
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(196.dp)
+                        .background(Color(0xFF0E131D))
+                        .then(
+                            if (embedPlayerUrl != null) {
+                                Modifier.clickable { showEmbeddedPlayer = true }
+                            } else {
+                                Modifier
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!thumbnailUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = thumbnailUrl,
+                            contentDescription = title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color(0x33000000),
+                                            Color(0xCC0B0E14)
+                                        )
                                     )
                                 )
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.Link,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    }
+
+                    if (embedPlayerUrl != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xD8151C38))
+                                .border(1.5.dp, FuturisticCyan.copy(alpha = 0.75f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PlayArrow,
+                                contentDescription = "Putar video di aplikasi",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
                             )
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Filled.Link,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(44.dp)
-                    )
-                }
+                        }
+                    }
 
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(12.dp),
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
-                ) {
-                    Text(
-                        text = platformName,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (!authorName.isNullOrBlank()) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(12.dp),
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
+                    ) {
                         Text(
-                            text = authorName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White.copy(alpha = 0.8f),
-                            maxLines = 1,
+                            text = platformName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
+                        if (!authorName.isNullOrBlank()) {
+                            Text(
+                                text = authorName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -243,14 +363,60 @@ fun SocialLinkPreviewCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                val safeOriginalUrl = originalUrl?.takeIf { UrlSecurityValidator.isSafeExternalHttpUrl(it) }
-                if (safeOriginalUrl != null) {
+                if (embedPlayerUrl != null && !showEmbeddedPlayer) {
                     Button(
-                        onClick = { runCatching { uriHandler.openUri(safeOriginalUrl) } },
+                        onClick = { showEmbeddedPlayer = true },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = NeonPurple,
                             contentColor = Color.White
                         ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .minimumInteractiveComponentSize()
+                            .testTag("play_social_embed_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text("Putar Video di Aplikasi")
+                    }
+                }
+                Button(
+                    onClick = onAttachLocalVideo,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (embedPlayerUrl != null && !showEmbeddedPlayer) {
+                            CosmicSurfaceElevated
+                        } else {
+                            NeonPurple
+                        },
+                        contentColor = Color.White
+                    ),
+                    border = if (embedPlayerUrl != null && !showEmbeddedPlayer) {
+                        BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f))
+                    } else {
+                        null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .minimumInteractiveComponentSize()
+                        .testTag("attach_local_video_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.VideoLibrary,
+                        contentDescription = null,
+                        tint = FuturisticCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(R.string.studio_link_attach_local))
+                }
+                if (safeOriginalUrl != null) {
+                    OutlinedButton(
+                        onClick = { runCatching { uriHandler.openUri(safeOriginalUrl) } },
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier
                             .fillMaxWidth()
                             .minimumInteractiveComponentSize()
@@ -262,24 +428,8 @@ fun SocialLinkPreviewCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.size(8.dp))
-                        Text("Buka Video di $platformName / Browser")
+                        Text("Buka Link di $platformName / Browser")
                     }
-                }
-                OutlinedButton(
-                    onClick = onAttachLocalVideo,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("attach_local_video_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.VideoLibrary,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(stringResource(R.string.studio_link_attach_local))
                 }
             }
         }
@@ -483,24 +633,25 @@ fun VideoClipPlayerPreview(
     transitionDurationMs: Long = 600L,
     selectedMusicTitle: String? = null,
     includeWatermark: Boolean = false,
+    autoPlay: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var isPlaying by remember { mutableStateOf(false) }
-    var isBuffering by remember { mutableStateOf(false) }
-    var playbackNotice by remember { mutableStateOf<String?>(null) }
+    var isPlaying by remember(videoUri) { mutableStateOf(false) }
+    var isBuffering by remember(videoUri) { mutableStateOf(false) }
+    var playbackNotice by remember(videoUri) { mutableStateOf<String?>(null) }
     var hasRetriedDirect by remember(videoUri) { mutableStateOf(false) }
     var hasAttachedEffects by remember(videoUri) { mutableStateOf(false) }
-    var currentPosMs by remember { mutableLongStateOf(0L) }
+    var currentPosMs by remember(videoUri) { mutableLongStateOf(0L) }
     var showOverlayOnPlay by remember { mutableStateOf(false) }
 
     val latestStartMs by rememberUpdatedState(startMs.coerceAtLeast(0L))
     val latestEndMs by rememberUpdatedState(endMs)
 
     val exoPlayer = remember(videoUri) {
-        MediaPlaybackCache.buildFastExoPlayer(context).apply {
+        MediaPlaybackCache.buildFastExoPlayer(context, videoUri).apply {
             repeatMode = Player.REPEAT_MODE_ONE
-            playWhenReady = false
+            playWhenReady = autoPlay
         }
     }
 
@@ -524,6 +675,7 @@ fun VideoClipPlayerPreview(
                 if (!hasRetriedDirect) {
                     hasRetriedDirect = true
                     playbackNotice = null
+                    val shouldKeepPlaying = exoPlayer.playWhenReady || exoPlayer.isPlaying
                     if (hasAttachedEffects) {
                         runCatching { exoPlayer.setVideoEffects(emptyList()) }
                         hasAttachedEffects = false
@@ -531,6 +683,7 @@ fun VideoClipPlayerPreview(
                     val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
                         .createMediaSource(MediaItem.fromUri(videoUri))
                     exoPlayer.setMediaSource(directSource)
+                    exoPlayer.playWhenReady = shouldKeepPlaying
                     exoPlayer.prepare()
                     return
                 }
@@ -549,11 +702,7 @@ fun VideoClipPlayerPreview(
     // Prepare media ONLY when videoUri changes so trim drags never reset buffer!
     LaunchedEffect(videoUri) {
         playbackNotice = null
-        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness)
-        if (effects.isNotEmpty()) {
-            exoPlayer.setVideoEffects(effects)
-            hasAttachedEffects = true
-        }
+        exoPlayer.playWhenReady = autoPlay
         exoPlayer.setMediaItem(MediaItem.fromUri(videoUri))
         exoPlayer.prepare()
         if (latestStartMs > 0L) {
@@ -571,11 +720,18 @@ fun VideoClipPlayerPreview(
         }
     }
 
-    LaunchedEffect(exoPlayer, videoFilter, brightness) {
+    LaunchedEffect(exoPlayer, videoUri, videoFilter, brightness) {
         val effects = VideoFilterEffects.buildEffects(videoFilter, brightness)
         if (effects.isNotEmpty() || hasAttachedEffects) {
-            exoPlayer.setVideoEffects(effects)
-            hasAttachedEffects = effects.isNotEmpty()
+            val applied = runCatching {
+                exoPlayer.setVideoEffects(effects)
+            }.isSuccess
+            if (applied) {
+                hasAttachedEffects = effects.isNotEmpty()
+            } else if (hasAttachedEffects) {
+                runCatching { exoPlayer.setVideoEffects(emptyList()) }
+                hasAttachedEffects = false
+            }
         }
     }
 
@@ -653,9 +809,11 @@ fun VideoClipPlayerPreview(
         ) {
             AndroidView(
                 factory = { ctx ->
-                    PlayerView(ctx).apply {
+                    (LayoutInflater.from(ctx).inflate(R.layout.player_view_texture, null, false) as PlayerView).apply {
                         useController = false
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        setKeepContentOnPlayerReset(true)
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                         layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -743,11 +901,15 @@ fun VideoClipPlayerPreview(
                     TextButton(
                         onClick = {
                             playbackNotice = null
+                            if (hasAttachedEffects) {
+                                runCatching { exoPlayer.setVideoEffects(emptyList()) }
+                                hasAttachedEffects = false
+                            }
                             val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
                                 .createMediaSource(MediaItem.fromUri(videoUri))
                             exoPlayer.setMediaSource(directSource)
+                            exoPlayer.playWhenReady = true
                             exoPlayer.prepare()
-                            exoPlayer.play()
                         },
                         modifier = Modifier.minimumInteractiveComponentSize()
                     ) {

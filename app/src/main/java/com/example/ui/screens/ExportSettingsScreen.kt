@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +34,9 @@ import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -48,8 +56,13 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -58,6 +71,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.domain.model.AspectRatioPreset
@@ -95,6 +109,8 @@ fun ExportSettingsScreen(
     onToggleWatermark: (Boolean) -> Unit = {},
     onStartExport: (ClipSegment, String) -> Unit,
     onEnqueueExport: (ClipSegment, String) -> Unit = { _, _ -> },
+    onAttachLocalVideo: (Long, Uri) -> Unit = { _, _ -> },
+    onAttachStreamUrl: (Long, String, ClipSegment?) -> Unit = { _, _, _ -> },
     onCancelExport: () -> Unit,
     onExportCompleted: (ExportedClip) -> Unit,
     modifier: Modifier = Modifier
@@ -103,6 +119,15 @@ fun ExportSettingsScreen(
 
     val project = editorState.project
     val segment = editorState.segment
+
+    val attachVideoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val activeProject = project
+        if (uri != null && activeProject != null) {
+            onAttachLocalVideo(activeProject.id, uri)
+        }
+    }
 
     LaunchedEffect(exportProgress) {
         if (exportProgress is ExportProgressState.Completed) {
@@ -192,12 +217,18 @@ fun ExportSettingsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
                                     Text(
                                         text = segment.title,
                                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                         color = Color.White,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     val wmSummary = if (segment.includeWatermark) {
                                         stringResource(R.string.watermark_brand_label)
@@ -211,7 +242,9 @@ fun ExportSettingsScreen(
                                             "Format ${segment.aspectRatio.label} • ${segment.exportQuality.label} • $wmSummary"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 Surface(
@@ -223,6 +256,8 @@ fun ExportSettingsScreen(
                                         text = "${outW}×${outH}",
                                         style = MonoTimecodeStyle.copy(fontWeight = FontWeight.Bold),
                                         color = FuturisticCyan,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                     )
                                 }
@@ -505,6 +540,109 @@ fun ExportSettingsScreen(
                         }
                     }
 
+                    if (!project.hasPlayableStream) {
+                        item {
+                            var directStreamUrlInput by remember(project.id) { mutableStateOf("") }
+                            val isExportingNow = exportProgress is ExportProgressState.Exporting
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = CosmicSurfaceElevated,
+                                border = BorderStroke(1.2.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("export_missing_video_source_card")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Video Sumber Diperlukan untuk Ekspor MP4",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = FuturisticCyan
+                                    )
+                                    Text(
+                                        text = "Tautan ${project.sourcePlatformName ?: "media sosial"} membatasi unduhan file MP4 langsung sesuai kebijakan platform. Pilih video dari galeri HP atau tempel URL video langsung (.mp4 / .m3u8) di bawah untuk langsung diekspor & disimpan ke Galeri.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.9f)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            attachVideoLauncher.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                            )
+                                        },
+                                        enabled = !isExportingNow,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = NeonPurple,
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .minimumInteractiveComponentSize()
+                                            .testTag("export_attach_local_video_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.VideoLibrary,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Pilih File Video dari HP")
+                                    }
+
+                                    OutlinedTextField(
+                                        value = directStreamUrlInput,
+                                        onValueChange = { directStreamUrlInput = it },
+                                        label = { Text("Atau tempel URL video langsung (.mp4 / .m3u8)") },
+                                        placeholder = { Text("https://.../video.mp4") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("export_direct_stream_url_input")
+                                    )
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            onAttachStreamUrl(project.id, directStreamUrlInput, segment)
+                                        },
+                                        enabled = directStreamUrlInput.isNotBlank() && !isExportingNow,
+                                        border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .minimumInteractiveComponentSize()
+                                            .testTag("export_attach_stream_url_button")
+                                    ) {
+                                        Text(
+                                            text = "Pakai Link & Ekspor ke Galeri",
+                                            color = FuturisticCyan,
+                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                                        )
+                                    }
+
+                                    if (project.sourceUri.startsWith("http", ignoreCase = true)) {
+                                        TextButton(
+                                            onClick = {
+                                                onAttachStreamUrl(project.id, project.sourceUri, segment)
+                                            },
+                                            enabled = !isExportingNow,
+                                            modifier = Modifier
+                                                .align(Alignment.End)
+                                                .minimumInteractiveComponentSize()
+                                                .testTag("export_recheck_project_link_button")
+                                        ) {
+                                            Text("Cek Ulang Link Proyek", color = FuturisticCyan)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Primary gradient CTA button + Secondary Background Queue CTA
                     item {
                         val isExporting = exportProgress is ExportProgressState.Exporting
@@ -538,6 +676,7 @@ fun ExportSettingsScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(
+                                    modifier = Modifier.alpha(if (enabled) 1f else 0.45f),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
@@ -569,11 +708,19 @@ fun ExportSettingsScreen(
                                     onBack()
                                 },
                                 enabled = project.hasPlayableStream,
-                                border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (project.hasPlayableStream) {
+                                        FuturisticCyan.copy(alpha = 0.7f)
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant
+                                    }
+                                ),
                                 shape = RoundedCornerShape(28.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(52.dp)
+                                    .alpha(if (project.hasPlayableStream) 1f else 0.45f)
                                     .testTag("export_settings_enqueue_button")
                             ) {
                                 Icon(

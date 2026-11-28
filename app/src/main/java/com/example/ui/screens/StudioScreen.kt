@@ -141,6 +141,7 @@ fun StudioScreen(
     onImportSourceChanged: (StudioImportSource) -> Unit,
     onLinkInputChanged: (String) -> Unit,
     onResolveSocialLink: () -> Unit,
+    onDirectExportLink: (String) -> Unit = {},
     onEnqueueSingleUrl: (String) -> Unit,
     onVideoPicked: (Uri) -> Unit,
     onEnqueueMultipleVideos: (List<Uri>) -> Unit,
@@ -277,8 +278,10 @@ fun StudioScreen(
                         linkInput = studioState.linkInput,
                         placeholderHint = selectedLinkHint,
                         isLoading = studioState.isLoadingVideo,
+                        isExporting = isExporting,
                         onLinkInputChanged = onLinkInputChanged,
                         onResolveClick = onResolveSocialLink,
+                        onDirectExportClick = { onDirectExportLink(studioState.linkInput) },
                         onEnqueueUrl = { onEnqueueSingleUrl(studioState.linkInput) }
                     )
                 }
@@ -1175,8 +1178,10 @@ private fun SocialLinkImportCard(
     linkInput: String,
     placeholderHint: String,
     isLoading: Boolean,
+    isExporting: Boolean,
     onLinkInputChanged: (String) -> Unit,
     onResolveClick: () -> Unit,
+    onDirectExportClick: () -> Unit,
     onEnqueueUrl: () -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
@@ -1344,6 +1349,34 @@ private fun SocialLinkImportCard(
                     )
                 }
             }
+
+            val canDirectExport = linkInput.isNotBlank() && !isLoading && !isExporting
+            Button(
+                onClick = onDirectExportClick,
+                enabled = canDirectExport,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF0E7490),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("direct_export_link_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MovieCreation,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.studio_link_direct_export_cta),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1454,6 +1487,7 @@ private fun SelectedVideoWorkspaceCard(
                     videoHeight = video.height,
                     videoFilter = selectedFilter,
                     brightness = brightness,
+                    autoPlay = true,
                     seekRequest = seekRequest,
                     playRangeRequest = playRangeRequest,
                     onPositionChanged = { pos -> playheadPositionMs = pos }

@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import android.net.Uri
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
@@ -71,6 +72,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.example.R
 import com.example.domain.model.VideoFilterPreset
 import com.example.media.MediaPlaybackCache
 import com.example.media.VideoFilterEffects
@@ -99,30 +101,31 @@ fun MainVideoPlayer(
     videoHeight: Int,
     videoFilter: VideoFilterPreset = VideoFilterPreset.NONE,
     brightness: Float = 0f,
+    autoPlay: Boolean = false,
     seekRequest: Pair<Long, Long>? = null,
     playRangeRequest: Triple<Long, Long, Long>? = null,
     onPositionChanged: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var isPlaying by remember { mutableStateOf(false) }
-    var isBuffering by remember { mutableStateOf(false) }
+    var isPlaying by remember(videoUri) { mutableStateOf(false) }
+    var isBuffering by remember(videoUri) { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(false) }
-    var playbackNotice by remember { mutableStateOf<String?>(null) }
+    var playbackNotice by remember(videoUri) { mutableStateOf<String?>(null) }
     var hasRetriedDirect by remember(videoUri) { mutableStateOf(false) }
     var hasAttachedEffects by remember(videoUri) { mutableStateOf(false) }
-    var currentPositionMs by remember { mutableLongStateOf(0L) }
-    var bufferedPositionMs by remember { mutableLongStateOf(0L) }
-    var durationMs by remember { mutableLongStateOf(0L) }
+    var currentPositionMs by remember(videoUri) { mutableLongStateOf(0L) }
+    var bufferedPositionMs by remember(videoUri) { mutableLongStateOf(0L) }
+    var durationMs by remember(videoUri) { mutableLongStateOf(0L) }
     var isScrubbing by remember { mutableStateOf(false) }
-    var activeClipEndMs by remember { mutableStateOf<Long?>(null) }
+    var activeClipEndMs by remember(videoUri) { mutableStateOf<Long?>(null) }
     var speedIndex by remember { mutableStateOf(0) }
     var showOverlayOnPlay by remember { mutableStateOf(false) }
 
     val exoPlayer = remember(videoUri) {
-        MediaPlaybackCache.buildFastExoPlayer(context).apply {
+        MediaPlaybackCache.buildFastExoPlayer(context, videoUri).apply {
             repeatMode = Player.REPEAT_MODE_OFF
-            playWhenReady = false
+            playWhenReady = autoPlay
         }
     }
 
@@ -152,6 +155,7 @@ fun MainVideoPlayer(
                 if (!hasRetriedDirect) {
                     hasRetriedDirect = true
                     playbackNotice = null
+                    val shouldKeepPlaying = exoPlayer.playWhenReady || exoPlayer.isPlaying
                     if (hasAttachedEffects) {
                         runCatching { exoPlayer.setVideoEffects(emptyList()) }
                         hasAttachedEffects = false
@@ -159,6 +163,7 @@ fun MainVideoPlayer(
                     val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
                         .createMediaSource(MediaItem.fromUri(videoUri))
                     exoPlayer.setMediaSource(directSource)
+                    exoPlayer.playWhenReady = shouldKeepPlaying
                     exoPlayer.prepare()
                     return
                 }
@@ -177,20 +182,23 @@ fun MainVideoPlayer(
     LaunchedEffect(videoUri) {
         activeClipEndMs = null
         playbackNotice = null
-        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness)
-        if (effects.isNotEmpty()) {
-            exoPlayer.setVideoEffects(effects)
-            hasAttachedEffects = true
-        }
+        exoPlayer.playWhenReady = autoPlay
         exoPlayer.setMediaItem(MediaItem.fromUri(videoUri))
         exoPlayer.prepare()
     }
 
-    LaunchedEffect(exoPlayer, videoFilter, brightness) {
+    LaunchedEffect(exoPlayer, videoUri, videoFilter, brightness) {
         val effects = VideoFilterEffects.buildEffects(videoFilter, brightness)
         if (effects.isNotEmpty() || hasAttachedEffects) {
-            exoPlayer.setVideoEffects(effects)
-            hasAttachedEffects = effects.isNotEmpty()
+            val applied = runCatching {
+                exoPlayer.setVideoEffects(effects)
+            }.isSuccess
+            if (applied) {
+                hasAttachedEffects = effects.isNotEmpty()
+            } else if (hasAttachedEffects) {
+                runCatching { exoPlayer.setVideoEffects(emptyList()) }
+                hasAttachedEffects = false
+            }
         }
     }
 
@@ -293,9 +301,11 @@ fun MainVideoPlayer(
             ) {
                 AndroidView(
                     factory = { ctx ->
-                        PlayerView(ctx).apply {
+                        (LayoutInflater.from(ctx).inflate(R.layout.player_view_texture, null, false) as PlayerView).apply {
                             useController = false
                             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            setKeepContentOnPlayerReset(true)
+                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                             layoutParams = FrameLayout.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -363,11 +373,15 @@ fun MainVideoPlayer(
                             TextButton(
                                 onClick = {
                                     playbackNotice = null
+                                    if (hasAttachedEffects) {
+                                        runCatching { exoPlayer.setVideoEffects(emptyList()) }
+                                        hasAttachedEffects = false
+                                    }
                                     val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
                                         .createMediaSource(MediaItem.fromUri(videoUri))
                                     exoPlayer.setMediaSource(directSource)
+                                    exoPlayer.playWhenReady = true
                                     exoPlayer.prepare()
-                                    exoPlayer.play()
                                 },
                                 modifier = Modifier.minimumInteractiveComponentSize()
                             ) {

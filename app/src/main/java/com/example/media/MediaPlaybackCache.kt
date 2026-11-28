@@ -80,7 +80,11 @@ object MediaPlaybackCache {
         return DefaultMediaSourceFactory(dataSourceFactory)
     }
 
-    fun buildFastExoPlayer(context: Context, bypassCache: Boolean = false): ExoPlayer {
+    fun buildFastExoPlayer(
+        context: Context,
+        videoUri: Uri? = null,
+        bypassCache: Boolean = false
+    ): ExoPlayer {
         val appContext = context.applicationContext
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -94,9 +98,10 @@ object MediaPlaybackCache {
 
         val renderersFactory = DefaultRenderersFactory(appContext)
             .setEnableDecoderFallback(true)
-            .forceEnableMediaCodecAsynchronousQueueing()
 
-        val mediaSourceFactory = if (bypassCache) {
+        val scheme = videoUri?.scheme?.lowercase()
+        val shouldBypassCache = bypassCache || (scheme != null && scheme != "http" && scheme != "https")
+        val mediaSourceFactory = if (shouldBypassCache) {
             buildDirectMediaSourceFactory(appContext)
         } else {
             DefaultMediaSourceFactory(buildCacheDataSourceFactory(appContext))

@@ -38,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -171,11 +172,22 @@ fun ExportSuccessScreen(
             }
 
             if (exportedClip != null) {
-                item {
-                    VideoClipPlayerPreview(
-                        videoUri = Uri.fromFile(File(exportedClip.filePath)),
-                        aspectRatio = exportedClip.aspectRatio
-                    )
+                item(key = "exported_video_preview") {
+                    val previewUri = remember(exportedClip.id, exportedClip.filePath, exportedClip.galleryUri) {
+                        val file = File(exportedClip.filePath)
+                        when {
+                            file.exists() && file.length() > 0L -> Uri.fromFile(file)
+                            !exportedClip.galleryUri.isNullOrBlank() -> Uri.parse(exportedClip.galleryUri)
+                            else -> null
+                        }
+                    }
+                    if (previewUri != null) {
+                        VideoClipPlayerPreview(
+                            videoUri = previewUri,
+                            aspectRatio = exportedClip.aspectRatio,
+                            autoPlay = true
+                        )
+                    }
                 }
             }
 

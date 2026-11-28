@@ -177,10 +177,28 @@ fun ExportsScreen(
                         }
                     }
 
-                    VideoClipPlayerPreview(
-                        videoUri = Uri.fromFile(File(clip.filePath)),
-                        aspectRatio = clip.aspectRatio
-                    )
+                    val previewUri = remember(clip.id, clip.filePath, clip.galleryUri) {
+                        val file = File(clip.filePath)
+                        when {
+                            file.exists() && file.length() > 0L -> Uri.fromFile(file)
+                            !clip.galleryUri.isNullOrBlank() -> Uri.parse(clip.galleryUri)
+                            else -> null
+                        }
+                    }
+                    if (previewUri != null) {
+                        VideoClipPlayerPreview(
+                            videoUri = previewUri,
+                            aspectRatio = clip.aspectRatio,
+                            autoPlay = true
+                        )
+                    } else {
+                        Text(
+                            text = "File video tidak lagi ditemukan di penyimpanan perangkat.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    }
                 }
             }
         }

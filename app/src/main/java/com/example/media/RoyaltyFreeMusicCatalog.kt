@@ -171,7 +171,7 @@ object RoyaltyFreeMusicCatalog {
         val dir = File(context.filesDir, "royalty_free_music").apply {
             if (!exists()) mkdirs()
         }.canonicalFile
-        val safeFileName = "${track.id.replace(Regex("[^a-zA-Z0-9_\\-]"), "_")}_${durationSec}s.wav"
+        val safeFileName = "${track.id.replace(Regex("[^a-zA-Z0-9_\\-]"), "_")}_44k_${durationSec}s.wav"
         val targetFile = File(dir, safeFileName).canonicalFile
         if (!targetFile.path.startsWith(dir.path + File.separator)) return@withContext null
         if (!targetFile.exists() || targetFile.length() < 4096L) {
@@ -189,7 +189,7 @@ object RoyaltyFreeMusicCatalog {
         track: MusicTrackRecommendation,
         durationSec: Int
     ) {
-        val sampleRate = 22050
+        val sampleRate = 44100
         val channels = 2
         val totalSamples = sampleRate * durationSec
         val dataSizeBytes = totalSamples * channels * 2

@@ -76,10 +76,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.R
 import com.example.data.ai.FirebaseAiClipperRepository
+import com.example.data.ai.PlaceholderAiClipperRepository
 import com.example.data.firebase.FirestoreClipRepository
 import com.example.domain.model.ExportProgressState
 import com.example.domain.model.ExportedClip
 import com.example.media.SocialShareHelper
+import com.example.ui.auth.LocalGoogleSessionStore
 import com.example.ui.auth.authStateFlow
 import com.example.ui.auth.signOut
 import com.example.ui.components.BackgroundRenderQueueStrip
@@ -165,8 +167,10 @@ fun AiClipperApp(
     sharedLinkText: String? = null,
     onSharedLinkConsumed: () -> Unit = {}
 ) {
+    val appContext = LocalContext.current
     val auth = remember { Firebase.auth }
     val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+    var localGoogleSession by remember { mutableStateOf(LocalGoogleSessionStore.load(appContext)) }
     var splashCompleted by remember { mutableStateOf(false) }
 
     if (!splashCompleted) {
@@ -177,38 +181,68 @@ fun AiClipperApp(
     }
 
     val signedInUser = currentUser
-    if (signedInUser == null) {
-        AuthScreen(onAuthSuccess = {})
+    val activeLocalSession = if (signedInUser == null) localGoogleSession else null
+
+    if (signedInUser == null && activeLocalSession == null) {
+        AuthScreen(
+            onAuthSuccess = {},
+            onLocalModeSuccess = { session ->
+                localGoogleSession = session
+            }
+        )
     } else {
-        androidx.compose.runtime.key(signedInUser.uid) {
+        val sessionKey = signedInUser?.uid
+            ?: "local_${activeLocalSession?.accountLabel?.ifBlank { activeLocalSession.displayName } ?: "studio"}"
+        androidx.compose.runtime.key(sessionKey) {
             val userViewModel: ClipperViewModel = viewModel(
-                key = signedInUser.uid,
+                key = sessionKey,
                 factory = viewModelFactory {
                     initializer {
                         val app = checkNotNull(this[APPLICATION_KEY]) {
                             "APPLICATION_KEY missing from CreationExtras"
                         }
-                        val databaseId = app.getString(R.string.firestore_database_id)
-                        val db = FirebaseFirestore.getInstance(databaseId)
-                        ClipperViewModel(
-                            application = app,
-                            currentUserId = signedInUser.uid,
-                            firestoreRepository = FirestoreClipRepository(db),
-                            aiRepository = FirebaseAiClipperRepository()
-                        )
+                        if (signedInUser != null) {
+                            val databaseId = app.getString(R.string.firestore_database_id)
+                            val db = FirebaseFirestore.getInstance(databaseId)
+                            ClipperViewModel(
+                                application = app,
+                                currentUserId = signedInUser.uid,
+                                firestoreRepository = FirestoreClipRepository(db),
+                                aiRepository = FirebaseAiClipperRepository()
+                            )
+                        } else {
+                            ClipperViewModel(
+                                application = app,
+                                currentUserId = null,
+                                firestoreRepository = null,
+                                aiRepository = PlaceholderAiClipperRepository()
+                            )
+                        }
                     }
                 }
             )
-            androidx.compose.runtime.LaunchedEffect(signedInUser.uid) {
-                userViewModel.ensureCloudSyncActive()
+            androidx.compose.runtime.LaunchedEffect(sessionKey) {
+                if (signedInUser != null) {
+                    userViewModel.ensureCloudSyncActive()
+                } else {
+                    activeLocalSession?.noticeMessage?.let { notice ->
+                        userViewModel.postStatusMessage(notice)
+                    }
+                }
             }
+            val displayName = signedInUser?.displayName?.takeIf { it.isNotBlank() }
+                ?: signedInUser?.email
+                ?: activeLocalSession?.displayName?.takeIf { it.isNotBlank() }
+                ?: "Kreator Google"
+
             AuthenticatedAiClipperContent(
-                userDisplayName = signedInUser.displayName
-                    ?.takeIf { it.isNotBlank() }
-                    ?: signedInUser.email
-                    ?: "Kreator Google",
+                userDisplayName = displayName,
                 sharedLinkText = sharedLinkText,
                 onSharedLinkConsumed = onSharedLinkConsumed,
+                onSignOutComplete = {
+                    LocalGoogleSessionStore.clear(appContext)
+                    localGoogleSession = null
+                },
                 viewModel = userViewModel
             )
         }
@@ -220,6 +254,7 @@ private fun AuthenticatedAiClipperContent(
     userDisplayName: String,
     sharedLinkText: String?,
     onSharedLinkConsumed: () -> Unit,
+    onSignOutComplete: () -> Unit,
     viewModel: ClipperViewModel
 ) {
     val navController = rememberNavController()
@@ -480,6 +515,18 @@ private fun AuthenticatedAiClipperContent(
                                     onImportSourceChanged = viewModel::updateImportSource,
                                     onLinkInputChanged = viewModel::updateLinkInput,
                                     onResolveSocialLink = { viewModel.resolveSocialLink() },
+                                    onDirectExportLink = { url ->
+                                        viewModel.directExportFromLink(url) { clip ->
+                                            lastCompletedExport = clip
+                                            viewModel.resetExportState()
+                                            navController.navigate(ROUTE_EXPORT_SUCCESS) {
+                                                launchSingleTop = true
+                                            }
+                                            if (autoOpenShareSheet) {
+                                                viewModel.openShareSheetForClip(clip)
+                                            }
+                                        }
+                                    },
                                     onEnqueueSingleUrl = { url ->
                                         viewModel.enqueueSocialLinks(url)
                                         navController.navigate(ROUTE_BATCH_QUEUE) {
@@ -542,9 +589,11 @@ private fun AuthenticatedAiClipperContent(
                                     cloudSyncState = cloudSyncState,
                                     onSignOut = {
                                         signOut(
+                                            context = context,
                                             credentialManager = credentialManager,
                                             scope = scope,
-                                            onBeforeSignOut = { viewModel.prepareForSignOut() }
+                                            onBeforeSignOut = { viewModel.prepareForSignOut() },
+                                            onSignOutComplete = onSignOutComplete
                                         )
                                     }
                                 )
@@ -681,6 +730,7 @@ private fun AuthenticatedAiClipperContent(
                                             viewModel.exportCombinedProjectWithTransitions(projId)
                                         }
                                     },
+                                    onAttachLocalVideo = viewModel::attachLocalVideoToProject,
                                     onGoToStudio = {
                                         navController.navigate(ROUTE_STUDIO) {
                                             popUpTo(ROUTE_STUDIO) { inclusive = true }
@@ -802,6 +852,8 @@ private fun AuthenticatedAiClipperContent(
                                         viewModel.enqueueClipForBackgroundExport(seg, sourceUri, autoStart = true)
                                         navController.popBackStack()
                                     },
+                                    onAttachLocalVideo = viewModel::attachLocalVideoToProject,
+                                    onAttachStreamUrl = viewModel::attachStreamUrlToProject,
                                     onCancelExport = viewModel::cancelExport,
                                     onExportCompleted = { clip ->
                                         lastCompletedExport = clip

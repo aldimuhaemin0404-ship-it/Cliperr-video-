@@ -232,7 +232,9 @@ class ClipperViewModel(
                     initialValue = CloudSyncUiState.Loading
                 )
         } else {
-            MutableStateFlow(CloudSyncUiState.Synced(0)).asStateFlow()
+            MutableStateFlow<CloudSyncUiState>(
+                CloudSyncUiState.Error("Mode Studio Lokal Aktif • Penyimpanan Perangkat")
+            ).asStateFlow()
         }
 
     init {
@@ -681,6 +683,172 @@ class ClipperViewModel(
         }
     }
 
+    fun directExportFromLink(
+        rawInput: String = _studioState.value.linkInput,
+        onExported: (ExportedClip) -> Unit = {}
+    ) {
+        if (_exportProgress.value is ExportProgressState.Exporting) return
+
+        activeExportJob = viewModelScope.launch {
+            _studioState.update { it.copy(isLoadingVideo = true, errorMessage = null) }
+            try {
+                val resolved = socialLinkResolver.resolveLink(rawInput)
+                val streamUrl = resolved.playableStreamUrl
+                if (streamUrl == null) {
+                    val fallbackEnd = minOf(resolved.durationMs, _studioState.value.selectedPlatform.maxRecommendedSec * 1000L)
+                        .coerceAtLeast(minOf(resolved.durationMs, 1_000L))
+                    _studioState.update { state ->
+                        state.copy(
+                            selectedVideo = VideoMetadata(
+                                uriString = resolved.resolvedPageUrl,
+                                title = resolved.title,
+                                durationMs = resolved.durationMs,
+                                width = resolved.width,
+                                height = resolved.height,
+                                sourcePlatform = resolved.platform,
+                                authorName = resolved.authorName,
+                                thumbnailUrl = resolved.thumbnailUrl,
+                                originalShareUrl = resolved.originalUrl,
+                                hasPlayableStream = false,
+                                streamStatusNote = resolved.statusNote
+                            ),
+                            filmstripThumbnails = emptyList(),
+                            trimStartMs = 0L,
+                            trimEndMs = fallbackEnd,
+                            suggestedHighlights = emptyList(),
+                            isLoadingVideo = false,
+                            errorMessage = "Tautan ${resolved.platform.displayName} membatasi unduhan MP4 langsung sesuai kebijakan platform. Tempel URL video (.mp4 / .m3u8) atau pilih video dari galeri HP untuk langsung diekspor & disimpan ke Galeri."
+                        )
+                    }
+                    _statusBannerMessage.value = "Tautan ${resolved.platform.displayName} dimuat. Pilih file MP4 HP atau tempel link .mp4 langsung untuk simpan ke Galeri."
+                    return@launch
+                }
+
+                val streamUri = Uri.parse(streamUrl)
+                val inspected = runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
+                val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: resolved.durationMs
+                val finalWidth = inspected?.width?.takeIf { it > 0 } ?: resolved.width
+                val finalHeight = inspected?.height?.takeIf { it > 0 } ?: resolved.height
+
+                val currentStudio = _studioState.value
+                val initialEnd = minOf(finalDuration, currentStudio.selectedPlatform.maxRecommendedSec * 1000L)
+                    .coerceAtLeast(minOf(finalDuration, 1_000L))
+
+                _studioState.update { state ->
+                    state.copy(
+                        selectedVideo = VideoMetadata(
+                            uriString = streamUrl,
+                            title = resolved.title,
+                            durationMs = finalDuration,
+                            width = finalWidth,
+                            height = finalHeight,
+                            sourcePlatform = resolved.platform,
+                            authorName = resolved.authorName,
+                            thumbnailUrl = resolved.thumbnailUrl,
+                            originalShareUrl = resolved.originalUrl,
+                            hasPlayableStream = true,
+                            streamStatusNote = resolved.statusNote
+                        ),
+                        trimStartMs = 0L,
+                        trimEndMs = initialEnd,
+                        isLoadingVideo = false,
+                        errorMessage = null
+                    )
+                }
+
+                val project = ClipProject(
+                    title = resolved.title,
+                    sourceUri = streamUrl,
+                    durationMs = finalDuration,
+                    width = finalWidth,
+                    height = finalHeight,
+                    targetPlatform = currentStudio.selectedPlatform,
+                    focusTopic = currentStudio.focusTopic,
+                    sourcePlatformName = resolved.platform.displayName,
+                    authorName = resolved.authorName,
+                    thumbnailUrl = resolved.thumbnailUrl,
+                    hasPlayableStream = true,
+                    isPlaceholderAi = false
+                )
+                val directSegment = ClipSegment(
+                    projectId = 0L,
+                    title = resolved.title.take(36),
+                    hookLine = "Sorotan dari ${resolved.platform.displayName}",
+                    viralScore = 90,
+                    rationale = "Diekspor langsung dari tautan stream video.",
+                    captionText = "${resolved.title} • ${currentStudio.selectedPlatform.displayName}",
+                    hashtags = "#AIClipper #Shorts #Reels",
+                    startMs = 0L,
+                    endMs = initialEnd,
+                    aspectRatio = currentStudio.selectedPlatform.defaultRatio,
+                    tone = CaptionTone.ENERGETIC,
+                    videoFilter = currentStudio.selectedFilter,
+                    brightness = currentStudio.brightness,
+                    showSubtitles = false,
+                    includeWatermark = currentStudio.includeWatermark,
+                    isPlaceholderAi = false
+                )
+
+                val savedProjectId = projectRepository.saveProjectWithSegments(project) { projId ->
+                    listOf(directSegment.copy(projectId = projId))
+                }
+                val persistedSegment = projectRepository.getSegmentsForProject(savedProjectId).firstOrNull()
+                    ?: directSegment.copy(projectId = savedProjectId)
+                syncProjectSnapshotToCloud(savedProjectId)
+                _selectedProjectId.value = savedProjectId
+
+                _exportProgress.value = ExportProgressState.Exporting(
+                    segmentId = persistedSegment.id,
+                    clipTitle = persistedSegment.title,
+                    progressPercent = 0
+                )
+
+                val exported = mediaProcessor.exportTrimmedClip(
+                    sourceUri = streamUri,
+                    segment = persistedSegment,
+                    onProgress = { pct ->
+                        _exportProgress.value = ExportProgressState.Exporting(
+                            segmentId = persistedSegment.id,
+                            clipTitle = persistedSegment.title,
+                            progressPercent = pct
+                        )
+                    },
+                    onTransformerCreated = { transformer ->
+                        activeTransformer = transformer
+                    }
+                )
+
+                val savedId = projectRepository.saveExportedClip(exported)
+                val finalClip = exported.copy(id = savedId)
+                val savedProject = projectRepository.getProject(savedProjectId)
+                firestoreRepository?.upsertExportedClip(finalClip, savedProject)
+
+                _exportProgress.value = ExportProgressState.Completed(finalClip)
+                _statusBannerMessage.value = if (finalClip.galleryUri != null) {
+                    "Video link selesai diekspor & tersimpan ke Galeri (Movies/AIClipper)!"
+                } else {
+                    "Video link selesai diekspor: ${finalClip.title}"
+                }
+                onExported(finalClip)
+            } catch (e: CancellationException) {
+                _studioState.update { it.copy(isLoadingVideo = false) }
+                _exportProgress.value = ExportProgressState.Idle
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Direct export from link halted", e)
+                _studioState.update {
+                    it.copy(
+                        isLoadingVideo = false,
+                        errorMessage = "Link belum menghasilkan stream MP4 langsung. Pastikan URL valid (.mp4/.m3u8) atau pilih video dari galeri HP."
+                    )
+                }
+                _exportProgress.value = ExportProgressState.Idle
+            } finally {
+                activeTransformer = null
+            }
+        }
+    }
+
     fun loadPopularVideo(item: PopularVideoItem) {
         studioThumbnailJob?.cancel()
         val streamUri = Uri.parse(item.streamUrl)
@@ -751,14 +919,9 @@ class ClipperViewModel(
                 it.copy(isLoadingVideo = true, errorMessage = null)
             }
             try {
-                runCatching {
-                    getApplication<Application>().contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                }
-                val metadata = mediaProcessor.extractMetadata(uri)
-                val cachedThumbs = mediaProcessor.getCachedThumbnails(uri, 8).orEmpty()
+                val durableUri = mediaProcessor.resolveDurableLocalUri(uri)
+                val metadata = mediaProcessor.extractMetadata(durableUri)
+                val cachedThumbs = mediaProcessor.getCachedThumbnails(durableUri, 8).orEmpty()
                 val currentMeta = _studioState.value.selectedVideo
                 val mergedMeta = if (currentMeta != null && !currentMeta.hasPlayableStream) {
                     metadata.copy(
@@ -789,7 +952,7 @@ class ClipperViewModel(
                 if (cachedThumbs.isEmpty()) {
                     studioThumbnailJob = viewModelScope.launch {
                         val thumbs = runCatching {
-                            mediaProcessor.extractThumbnails(uri, mergedMeta.durationMs, count = 8)
+                            mediaProcessor.extractThumbnails(durableUri, mergedMeta.durationMs, count = 8)
                         }.getOrDefault(emptyList())
                         if (thumbs.isNotEmpty()) {
                             _studioState.update { state ->
@@ -819,15 +982,12 @@ class ClipperViewModel(
     fun attachLocalVideoToProject(projectId: Long, uri: Uri) {
         viewModelScope.launch {
             try {
-                runCatching {
-                    getApplication<Application>().contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                }
+                val durableUri = mediaProcessor.resolveDurableLocalUri(uri)
                 val existing = projectRepository.getProject(projectId) ?: return@launch
-                val metadata = mediaProcessor.extractMetadata(uri)
-                val thumbs = mediaProcessor.extractThumbnails(uri, metadata.durationMs, count = 8)
+                val metadata = mediaProcessor.extractMetadata(durableUri)
+                val thumbs = runCatching {
+                    mediaProcessor.extractThumbnails(durableUri, metadata.durationMs, count = 8)
+                }.getOrDefault(emptyList())
                 val updatedProject = existing.copy(
                     sourceUri = metadata.uriString,
                     durationMs = metadata.durationMs,
@@ -853,7 +1013,7 @@ class ClipperViewModel(
                         state.copy(
                             project = updatedProject,
                             segment = clampedSeg,
-                            thumbnails = thumbs
+                            thumbnails = if (thumbs.isNotEmpty()) thumbs else state.thumbnails
                         )
                     }
                     updatedSegForSync?.let { clampedSeg ->
@@ -867,6 +1027,81 @@ class ClipperViewModel(
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to attach local video to project", e)
                 _statusBannerMessage.value = "Video lokal belum terbaca. Silakan pilih file MP4 lain."
+            }
+        }
+    }
+
+    fun attachStreamUrlToProject(
+        projectId: Long,
+        rawUrlInput: String,
+        autoExportSegment: ClipSegment? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val resolved = socialLinkResolver.resolveLink(rawUrlInput)
+                val streamUrl = resolved.playableStreamUrl
+                if (streamUrl == null) {
+                    val hint = "Tautan ${resolved.platform.displayName} membatasi unduhan file MP4 langsung sesuai kebijakan platform. Tempel URL video (.mp4 / .m3u8) atau pilih video dari galeri HP."
+                    _statusBannerMessage.value = hint
+                    _exportProgress.value = ExportProgressState.Error(hint)
+                    return@launch
+                }
+
+                val existing = projectRepository.getProject(projectId) ?: return@launch
+                val streamUri = Uri.parse(streamUrl)
+                val inspected = runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
+                val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: existing.durationMs
+                val finalWidth = inspected?.width?.takeIf { it > 0 } ?: resolved.width
+                val finalHeight = inspected?.height?.takeIf { it > 0 } ?: resolved.height
+
+                val updatedProject = existing.copy(
+                    sourceUri = streamUrl,
+                    durationMs = finalDuration,
+                    width = finalWidth,
+                    height = finalHeight,
+                    sourcePlatformName = resolved.platform.displayName,
+                    hasPlayableStream = true
+                )
+                projectRepository.updateProject(updatedProject)
+                firestoreRepository?.let { repo ->
+                    viewModelScope.launch { repo.upsertProject(updatedProject) }
+                }
+
+                var updatedSegForExport = autoExportSegment
+                if (_editorState.value.project?.id == projectId) {
+                    _editorState.update { state ->
+                        val seg = state.segment
+                        val clampedSeg = seg?.let {
+                            val safeEnd = it.endMs.coerceIn(1_000L, finalDuration)
+                            val safeStart = it.startMs.coerceIn(0L, (safeEnd - 500L).coerceAtLeast(0L))
+                            it.copy(startMs = safeStart, endMs = safeEnd)
+                        }
+                        if (autoExportSegment != null && clampedSeg != null) {
+                            updatedSegForExport = clampedSeg
+                        }
+                        state.copy(
+                            project = updatedProject,
+                            segment = clampedSeg
+                        )
+                    }
+                    updatedSegForExport?.let { seg ->
+                        projectRepository.updateSegment(seg)
+                        syncSegmentUpdateToCloud(seg)
+                    }
+                }
+
+                if (updatedSegForExport != null) {
+                    exportSegment(updatedSegForExport!!, streamUrl)
+                } else {
+                    _statusBannerMessage.value = "Link stream MP4 berhasil ditautkan! Ketuk Ekspor untuk simpan ke Galeri."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to attach stream URL to project", e)
+                val hint = "Masukkan link video langsung yang valid (.mp4 / .m3u8) atau pilih video dari galeri HP."
+                _statusBannerMessage.value = hint
+                _exportProgress.value = ExportProgressState.Error(hint)
             }
         }
     }
@@ -1955,16 +2190,40 @@ class ClipperViewModel(
 
         activeExportJob = viewModelScope.launch {
             try {
-                val project = projectRepository.getProject(segment.projectId)
+                var project = projectRepository.getProject(segment.projectId)
                 if (project != null && !project.hasPlayableStream) {
-                    _exportProgress.value = ExportProgressState.Error(
-                        "Tautkan file video lokal terlebih dahulu di Editor atau gunakan URL stream video langsung (.mp4/.m3u8) untuk merender MP4."
-                    )
-                    return@launch
+                    val isWebLink = project.sourceUri.startsWith("http://", ignoreCase = true) ||
+                        project.sourceUri.startsWith("https://", ignoreCase = true)
+                    val resolvedStream = if (isWebLink) {
+                        runCatching { socialLinkResolver.resolveLink(project!!.sourceUri) }.getOrNull()
+                    } else {
+                        null
+                    }
+                    val streamUrl = resolvedStream?.playableStreamUrl
+                    if (streamUrl != null) {
+                        val upgraded = project.copy(
+                            sourceUri = streamUrl,
+                            hasPlayableStream = true
+                        )
+                        projectRepository.updateProject(upgraded)
+                        firestoreRepository?.let { repo ->
+                            viewModelScope.launch { repo.upsertProject(upgraded) }
+                        }
+                        if (_editorState.value.project?.id == upgraded.id) {
+                            _editorState.update { it.copy(project = upgraded) }
+                        }
+                        project = upgraded
+                    } else {
+                        val platformLabel = project.sourcePlatformName ?: "media sosial"
+                        _exportProgress.value = ExportProgressState.Error(
+                            "Tautan $platformLabel membatasi unduhan file MP4 langsung sesuai kebijakan platform. Pilih file video dari HP atau tempel URL stream .mp4/.m3u8 untuk langsung diekspor ke Galeri."
+                        )
+                        return@launch
+                    }
                 }
 
-                val uriStr = sourceUriString
-                    ?: project?.sourceUri
+                val uriStr = project?.sourceUri?.takeIf { project.hasPlayableStream }
+                    ?: sourceUriString
                     ?: throw IllegalStateException("Sumber video proyek tidak ditemukan.")
 
                 projectRepository.updateSegment(segment)
@@ -2003,10 +2262,17 @@ class ClipperViewModel(
                 _exportProgress.value = ExportProgressState.Idle
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Export failed", e)
-                _exportProgress.value = ExportProgressState.Error(
-                    "Ekspor klip MP4 perlu dicoba ulang."
-                )
+                Log.e(TAG, "Export aborted cleanly", e)
+                val rawMessage = e.message?.trim().orEmpty()
+                val safeHint = rawMessage
+                    .takeIf {
+                        it.isNotBlank() &&
+                            !it.contains("error", ignoreCase = true) &&
+                            !it.contains("gagal", ignoreCase = true) &&
+                            !it.contains("buffering", ignoreCase = true)
+                    }
+                    ?: "Ekspor klip MP4 perlu disesuaikan. Coba turunkan kualitas ke 720p atau pilih file video MP4 lain."
+                _exportProgress.value = ExportProgressState.Error(safeHint)
             } finally {
                 activeTransformer = null
             }
@@ -2401,7 +2667,7 @@ class ClipperViewModel(
                     )
                 }
             } else {
-                val localUri = Uri.parse(initialItem.sourceUri)
+                val localUri = mediaProcessor.resolveDurableLocalUri(Uri.parse(initialItem.sourceUri))
                 val inspected = mediaProcessor.extractMetadata(localUri)
                 updateItem {
                     it.copy(
