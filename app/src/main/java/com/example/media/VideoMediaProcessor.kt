@@ -549,7 +549,7 @@ class VideoMediaProcessor(private val context: Context) {
 
             try {
                 val outStream = resolver.openOutputStream(uri)
-                    ?: throw IllegalStateException("Gagal membuka output stream MediaStore.")
+                    ?: throw IllegalStateException("Penyimpanan Galeri sedang tidak tersedia. Coba lagi.")
                 outStream.use { out ->
                     FileInputStream(file).use { input ->
                         input.copyTo(out)

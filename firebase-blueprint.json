@@ -295,6 +295,10 @@
           ],
           "description": "Target export resolution preset"
         },
+        "includeWatermark": {
+          "type": "boolean",
+          "description": "Whether the Aldi AI Clipper brand watermark badge is burned into exported video"
+        },
         "favorite": {
           "type": "boolean",
           "description": "Whether user bookmarked this clip as favorite"

@@ -30,7 +30,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -109,7 +108,9 @@ fun MainVideoPlayer(
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(false) }
-    var playbackError by remember { mutableStateOf<String?>(null) }
+    var playbackNotice by remember { mutableStateOf<String?>(null) }
+    var hasRetriedDirect by remember(videoUri) { mutableStateOf(false) }
+    var hasAttachedEffects by remember(videoUri) { mutableStateOf(false) }
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var bufferedPositionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
@@ -130,7 +131,7 @@ fun MainVideoPlayer(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
-                    playbackError = null
+                    playbackNotice = null
                     val d = exoPlayer.duration
                     if (d > 0L) durationMs = d
                     bufferedPositionMs = exoPlayer.bufferedPosition.coerceAtLeast(0L)
@@ -148,9 +149,22 @@ fun MainVideoPlayer(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (!hasRetriedDirect) {
+                    hasRetriedDirect = true
+                    playbackNotice = null
+                    if (hasAttachedEffects) {
+                        runCatching { exoPlayer.setVideoEffects(emptyList()) }
+                        hasAttachedEffects = false
+                    }
+                    val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
+                        .createMediaSource(MediaItem.fromUri(videoUri))
+                    exoPlayer.setMediaSource(directSource)
+                    exoPlayer.prepare()
+                    return
+                }
                 isBuffering = false
                 isPlaying = false
-                playbackError = error.localizedMessage ?: "Gagal memuat stream video."
+                playbackNotice = "Video siap dimuat ulang. Ketuk tombol di bawah untuk memutar."
             }
         }
         exoPlayer.addListener(listener)
@@ -162,14 +176,22 @@ fun MainVideoPlayer(
 
     LaunchedEffect(videoUri) {
         activeClipEndMs = null
-        playbackError = null
-        exoPlayer.setVideoEffects(VideoFilterEffects.buildEffects(videoFilter, brightness))
+        playbackNotice = null
+        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness)
+        if (effects.isNotEmpty()) {
+            exoPlayer.setVideoEffects(effects)
+            hasAttachedEffects = true
+        }
         exoPlayer.setMediaItem(MediaItem.fromUri(videoUri))
         exoPlayer.prepare()
     }
 
     LaunchedEffect(exoPlayer, videoFilter, brightness) {
-        exoPlayer.setVideoEffects(VideoFilterEffects.buildEffects(videoFilter, brightness))
+        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness)
+        if (effects.isNotEmpty() || hasAttachedEffects) {
+            exoPlayer.setVideoEffects(effects)
+            hasAttachedEffects = effects.isNotEmpty()
+        }
     }
 
     LaunchedEffect(seekRequest) {
@@ -186,7 +208,7 @@ fun MainVideoPlayer(
         if (playRangeRequest != null) {
             val (startMs, endMs, _) = playRangeRequest
             activeClipEndMs = endMs
-            playbackError = null
+            playbackNotice = null
             exoPlayer.seekTo(startMs.coerceAtLeast(0L))
             exoPlayer.play()
             currentPositionMs = startMs
@@ -253,8 +275,8 @@ fun MainVideoPlayer(
                     .background(Color.Black)
                     .clickable {
                         activeClipEndMs = null
-                        if (playbackError != null) {
-                            playbackError = null
+                        if (playbackNotice != null) {
+                            playbackNotice = null
                             exoPlayer.prepare()
                             exoPlayer.play()
                         } else if (exoPlayer.isPlaying) {
@@ -318,43 +340,15 @@ fun MainVideoPlayer(
                     }
                 }
 
-                // Top-end anti-buff status chip
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp),
-                    shape = RoundedCornerShape(50),
-                    color = Color(0xB8070914),
-                    border = BorderStroke(1.dp, StudioEmerald.copy(alpha = 0.5f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Bolt,
-                            contentDescription = null,
-                            tint = StudioEmerald,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Text(
-                            text = if (isBuffering) "Buffering…" else "Anti-Buff",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = if (isBuffering) FuturisticCyan else StudioEmerald
-                        )
-                    }
-                }
-
-                // Center Play/Pause or Buffering indicator
-                if (playbackError != null) {
+                // Center Play/Pause or Loading indicator
+                if (playbackNotice != null) {
                     Surface(
                         modifier = Modifier
                             .align(Alignment.Center)
                             .padding(16.dp),
                         shape = RoundedCornerShape(14.dp),
                         color = Color(0xDC0E1328),
-                        border = BorderStroke(1.dp, NeonPurple)
+                        border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f))
                     ) {
                         Column(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -362,13 +356,16 @@ fun MainVideoPlayer(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = playbackError ?: "Koneksi video terganggu",
+                                text = playbackNotice ?: "Ketuk Muat Ulang untuk memutar video",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.White
                             )
                             TextButton(
                                 onClick = {
-                                    playbackError = null
+                                    playbackNotice = null
+                                    val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
+                                        .createMediaSource(MediaItem.fromUri(videoUri))
+                                    exoPlayer.setMediaSource(directSource)
                                     exoPlayer.prepare()
                                     exoPlayer.play()
                                 },

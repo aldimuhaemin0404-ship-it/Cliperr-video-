@@ -865,6 +865,28 @@
     </aside>
 
     <main class="main-stage">
+      <!-- Global Undo/Redo & Background Export Progress Strip -->
+      <div id="globalUtilityBar" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--outline); border-radius:14px; padding:6px 10px;">
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <button id="globalUndoBtn" class="chip" style="min-height:34px; padding:4px 10px;" onclick="undoGlobalWeb()" disabled title="Urungkan (Ctrl+Z)">↩ Urungkan</button>
+            <button id="globalRedoBtn" class="chip" style="min-height:34px; padding:4px 10px;" onclick="redoGlobalWeb()" disabled title="Ulangi (Ctrl+Shift+Z)">↪ Ulangi</button>
+            <span id="globalHistoryLabel" style="font-size:0.75rem; color:var(--muted);">Belum ada riwayat edit</span>
+          </div>
+          <button id="topRenderQueueBtn" class="chip" style="min-height:34px; padding:4px 10px;" onclick="openRenderQueueTab()">⏳ Antrean Render <span id="topRenderQueueBadge" class="badge" style="margin-left:4px; padding:1px 6px;">0</span></button>
+        </div>
+        <div id="bgRenderStrip" class="card-elevated" style="display:none; padding:10px 12px; border-color:rgba(147,51,234,0.7); cursor:pointer;" onclick="openRenderQueueTab()">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+            <div style="min-width:0; flex:1;">
+              <div id="bgRenderStripTitle" style="font-size:0.84rem; font-weight:800; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Render Latar Belakang (0/0)</div>
+              <div id="bgRenderStripSub" style="font-size:0.75rem; color:var(--cyan); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Menyiapkan…</div>
+            </div>
+            <button class="chip selected" style="min-height:32px; padding:4px 10px;" onclick="event.stopPropagation(); openRenderQueueTab()">Lihat</button>
+          </div>
+          <div class="progress-track"><div id="bgRenderStripFill" class="progress-fill" style="width:0%;"></div></div>
+        </div>
+      </div>
+
       <section id="screen-home" class="screen-container active">
         <div class="top-bar">
           <div style="display:flex; align-items:center; gap:8px;">
@@ -983,12 +1005,21 @@
             <div class="chip-row" id="homePlatformChips"></div>
           </div>
 
-          <input id="homeTopicInput" type="text" class="input-field" placeholder="Fokus topik opsional (cth: momen lucu, tips cepat)..." />
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <strong style="font-size:0.86rem;">Pilihan Watermark Video:</strong>
+            <div class="chip-row">
+              <button id="homeWmNone" class="chip selected" onclick="setHomeWatermark(false)">✨ Tanpa Watermark</button>
+              <button id="homeWmBrand" class="chip" onclick="setHomeWatermark(true)">🏷️ Dengan Watermark</button>
+            </div>
+          </div>
+
+          <input id="homeTopicInput" type="text" class="input-field" placeholder="Fokus topik opsional (cth: momen lucu, tips cepat)..." oninput="onHomeTopicInput(this.value)" />
 
           <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:8px;">
             <button class="btn btn-outline-cyan" onclick="openManualExportSettings()">Ekspor Manual (9:16/4:5)</button>
             <button class="btn btn-gradient" onclick="startAiAnalysis()">✨ Analisis &amp; Buat 5 Klip AI</button>
           </div>
+          <button class="btn btn-outline" onclick="enqueueHomeManualClipToExportQueue()">⏳ Antrekan Klip Manual ke Render Latar Belakang</button>
         </div>
 
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1048,6 +1079,7 @@
         <div id="clipsListContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
         <div id="clipsActionBar" style="display:flex; flex-direction:column; gap:8px;">
           <button class="btn btn-gradient" onclick="editFirstClip()">✂️ Edit Semua</button>
+          <button class="btn btn-purple" onclick="enqueueAllClipsToExportQueue()">⏳ Antrekan Semua Klip ke Render</button>
           <button class="btn btn-outline" onclick="bookmarkAllClips()">🔖 Simpan Semua ke Favorit</button>
           <button class="btn btn-outline-cyan" onclick="exportCombinedWithTransitions()">🎞️ Gabungkan Semua Klip + Transisi</button>
         </div>
@@ -1078,6 +1110,7 @@
             </div>
             <div id="editorMusicOverlayPill" style="position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.75); border:1px solid rgba(6,182,212,0.6); padding:3px 9px; border-radius:99px; font-size:0.7rem; display:none; white-space:nowrap;">🎵</div>
             <div id="editorSubtitleOverlay" class="subtitle-overlay-box" style="display:none;"></div>
+            <div id="editorWatermarkOverlay" style="position:absolute; right:10px; bottom:54px; background:rgba(11,14,20,0.78); border:1px solid rgba(6,182,212,0.55); padding:3px 9px; border-radius:99px; font-size:0.68rem; font-weight:800; color:#fff; pointer-events:none; display:none;">Aldi AI Clipper</div>
           </div>
         </div>
         <div style="display:flex; justify-content:center; gap:10px; align-items:center;">
@@ -1087,6 +1120,7 @@
         <div class="tools-grid" id="editorToolsGrid"></div>
         <div id="editorToolPanel" class="card"></div>
         <button class="btn btn-gradient" onclick="goToExportSettingsFromEditor()">💾 Simpan &amp; Pengaturan Ekspor HD</button>
+        <button class="btn btn-outline-cyan" onclick="enqueueActiveClipToExportQueue(false)">⏳ Antrekan Ekspor (Latar Belakang)</button>
       </section>
 
       <section id="screen-export" class="screen-container">
@@ -1112,6 +1146,22 @@
         <div class="card">
           <strong>Kualitas / Resolusi Output</strong>
           <div class="quality-grid" id="exportQualityGrid"></div>
+        </div>
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>Watermark Video</strong>
+            <span class="badge">Bebas Pilih</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div id="expWmNoneCard" class="format-card selected" style="padding:10px 8px; text-align:left; align-items:flex-start;" onclick="setExpWatermark(false)">
+              <strong style="font-size:0.86rem;">✨ Tanpa Watermark</strong>
+              <span style="font-size:0.74rem; color:var(--muted);">Video bersih tanpa logo</span>
+            </div>
+            <div id="expWmBrandCard" class="format-card" style="padding:10px 8px; text-align:left; align-items:flex-start;" onclick="setExpWatermark(true)">
+              <strong style="font-size:0.86rem;">🏷️ Dengan Watermark</strong>
+              <span style="font-size:0.74rem; color:var(--muted);">Badge Aldi AI Clipper</span>
+            </div>
+          </div>
         </div>
         <div style="display:flex; flex-direction:column; gap:8px;">
           <label class="switch-row">
@@ -1139,6 +1189,7 @@
           <div class="progress-track"><div id="exportRenderFill" class="progress-fill"></div></div>
         </div>
         <button id="startExportBtn" class="btn btn-gradient" style="min-height:54px; border-radius:999px; font-size:1rem;" onclick="startWebExportRender()">🚀 Ekspor Video Sekarang</button>
+        <button class="btn btn-outline-cyan" onclick="enqueueActiveClipToExportQueue(true)">⏳ Antrekan di Latar Belakang &amp; Lanjut Edit</button>
       </section>
 
       <section id="screen-success" class="screen-container">
@@ -1164,23 +1215,52 @@
         <div class="top-bar">
           <button class="btn btn-outline btn-pill" onclick="navigate('home')">← Studio</button>
           <h2 style="font-size:1.15rem; font-weight:800;">Antrean Proses Batch</h2>
-          <button class="btn btn-outline btn-pill" onclick="clearCompletedBatch()">Bersihkan</button>
+          <button class="btn btn-outline btn-pill" onclick="clearActiveQueueTab()">Bersihkan</button>
         </div>
-        <div class="card">
-          <strong>Tambah Video atau Daftar URL ke Antrean:</strong>
-          <div style="display:flex; gap:8px;">
-            <label class="btn btn-outline-cyan" style="flex:1; cursor:pointer;">
-              📁 Upload Banyak Video
-              <input type="file" accept="video/*" multiple style="display:none;" onchange="handleMultiFilePick(event)" />
-            </label>
-          </div>
-          <textarea id="batchUrlsInput" class="input-field" placeholder="Tempel banyak URL (1 link per baris)..."></textarea>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-outline" style="flex:1;" onclick="enqueueBatchTextarea()">+ Masukkan Link</button>
-            <button class="btn btn-gradient" style="flex:1;" id="startBatchBtn" onclick="runBatchQueue()">▶ Proses Semua Antrean</button>
-          </div>
+
+        <div class="chip-row" style="gap:8px;">
+          <button id="batchTabRenderBtn" class="chip selected" style="flex:1;" onclick="setBatchTab('render')">🎬 Render Ekspor (<span id="tabRenderCount">0</span>)</button>
+          <button id="batchTabAiBtn" class="chip" style="flex:1;" onclick="setBatchTab('ai')">📦 Impor &amp; AI (<span id="tabAiCount">0</span>)</button>
         </div>
-        <div id="batchQueueList" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+        <div id="renderQueueSection" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div>
+                <strong style="font-size:0.95rem;">Antrean Render Latar Belakang</strong>
+                <p style="font-size:0.8rem; color:var(--muted);">Klip dirender berurutan menggunakan snapshot pengaturan saat diantrekan sehingga Anda bisa langsung mengedit video lain.</p>
+              </div>
+              <span id="renderQueueOverallPct" style="font-family:monospace; color:var(--cyan); font-weight:800;">0%</span>
+            </div>
+            <div class="progress-track"><div id="renderQueueOverallFill" class="progress-fill" style="width:0%;"></div></div>
+          </div>
+          <div id="exportRenderQueueList" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+
+        <div id="aiBatchSection" style="display:none; flex-direction:column; gap:10px;">
+          <div class="card">
+            <strong>Tambah Video atau Daftar URL ke Antrean:</strong>
+            <div style="display:flex; gap:8px;">
+              <label class="btn btn-outline-cyan" style="flex:1; cursor:pointer;">
+                📁 Upload Banyak Video
+                <input type="file" accept="video/*" multiple style="display:none;" onchange="handleMultiFilePick(event)" />
+              </label>
+            </div>
+            <textarea id="batchUrlsInput" class="input-field" placeholder="Tempel banyak URL (1 link per baris)..."></textarea>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <strong style="font-size:0.82rem;">Watermark Batch:</strong>
+              <div class="chip-row">
+                <button id="batchWmNone" class="chip selected" onclick="setBatchWatermark(false)">✨ Tanpa Watermark</button>
+                <button id="batchWmBrand" class="chip" onclick="setBatchWatermark(true)">🏷️ Dengan Watermark</button>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-outline" style="flex:1;" onclick="enqueueBatchTextarea()">+ Masukkan Link</button>
+              <button class="btn btn-gradient" style="flex:1;" id="startBatchBtn" onclick="runBatchQueue()">▶ Proses Semua Antrean</button>
+            </div>
+          </div>
+          <div id="batchQueueList" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
       </section>
 
       <section id="screen-exports" class="screen-container">
@@ -1347,14 +1427,25 @@
       exploreFilter: 'ALL',
       selectedPlatform: 'REELS_TIKTOK',
       selectedVideo: null,
+      homeTopic: '',
+      homeWatermark: false,
+      batchWatermark: false,
       homeTrimStart: 0,
       homeTrimEnd: 15,
       clips: [],
       favoritesOnly: false,
       activeClipId: null,
       activeTool: 'trim',
+      batchTab: 'render',
       batchQueue: [],
       isBatchRunning: false,
+      exportRenderQueue: [],
+      isRenderQueueRunning: false,
+      isForegroundExporting: false,
+      undoStack: [],
+      redoStack: [],
+      lastHistoryMeta: { key: null, at: 0 },
+      isApplyingHistory: false,
       exportedClips: [],
       lastExport: null,
       previewingMusicId: null,
@@ -1362,7 +1453,129 @@
       synthInterval: null
     };
 
+    const MAX_UNDO_HISTORY = 40;
+    const HISTORY_COALESCE_MS = 750;
     let aiTimer = null;
+
+    function cloneWorkspaceSnapshot() {
+      return {
+        selectedPlatform: appState.selectedPlatform,
+        selectedVideo: appState.selectedVideo ? { ...appState.selectedVideo } : null,
+        homeTopic: appState.homeTopic || '',
+        homeWatermark: !!appState.homeWatermark,
+        homeTrimStart: appState.homeTrimStart,
+        homeTrimEnd: appState.homeTrimEnd,
+        clips: appState.clips.map(c => ({
+          ...c,
+          sourceVideo: c.sourceVideo ? { ...c.sourceVideo } : null
+        })),
+        activeClipId: appState.activeClipId
+      };
+    }
+
+    function commitHistoryAction(label, beforeSnapshot, coalesceKey = null) {
+      if (appState.isApplyingHistory || !beforeSnapshot) return;
+      const afterSnapshot = cloneWorkspaceSnapshot();
+      const now = Date.now();
+      const lastEntry = appState.undoStack[appState.undoStack.length - 1];
+      const canCoalesce = Boolean(
+        coalesceKey &&
+        lastEntry &&
+        appState.lastHistoryMeta.key === coalesceKey &&
+        (now - appState.lastHistoryMeta.at) <= HISTORY_COALESCE_MS
+      );
+
+      if (canCoalesce) {
+        lastEntry.after = afterSnapshot;
+        lastEntry.label = label;
+      } else {
+        appState.undoStack.push({ label, before: beforeSnapshot, after: afterSnapshot });
+        if (appState.undoStack.length > MAX_UNDO_HISTORY) {
+          appState.undoStack.shift();
+        }
+      }
+      appState.redoStack = [];
+      appState.lastHistoryMeta = { key: coalesceKey, at: now };
+      updateUndoRedoUI();
+    }
+
+    function applyWorkspaceSnapshot(snap) {
+      if (!snap) return;
+      appState.isApplyingHistory = true;
+      try {
+        appState.selectedPlatform = snap.selectedPlatform;
+        appState.selectedVideo = snap.selectedVideo ? { ...snap.selectedVideo } : null;
+        appState.homeTopic = snap.homeTopic || '';
+        appState.homeWatermark = !!snap.homeWatermark;
+        appState.homeTrimStart = snap.homeTrimStart;
+        appState.homeTrimEnd = snap.homeTrimEnd;
+        appState.clips = (snap.clips || []).map(c => ({
+          ...c,
+          sourceVideo: c.sourceVideo ? { ...c.sourceVideo } : null
+        }));
+        appState.activeClipId = snap.activeClipId;
+
+        const topicEl = document.getElementById('homeTopicInput');
+        if (topicEl) topicEl.value = appState.homeTopic;
+        const startSlider = document.getElementById('homeTrimStart');
+        const endSlider = document.getElementById('homeTrimEnd');
+        if (appState.selectedVideo && startSlider && endSlider) {
+          const maxDur = Math.max(5, Math.round(appState.selectedVideo.durationSec || 15));
+          startSlider.max = maxDur;
+          endSlider.max = maxDur;
+          startSlider.value = appState.homeTrimStart;
+          endSlider.value = appState.homeTrimEnd;
+          document.getElementById('homeTrimText').textContent = `${fmtSec(appState.homeTrimStart)} – ${fmtSec(appState.homeTrimEnd)}`;
+        }
+        initPlatformChips();
+        updateHomeWatermarkUI();
+        if (appState.screen === 'clips') renderClipsList();
+        if (appState.screen === 'editor') renderEditorScreen();
+        if (appState.screen === 'export') renderExportSettingsScreen();
+      } finally {
+        appState.isApplyingHistory = false;
+      }
+    }
+
+    function undoGlobalWeb() {
+      if (appState.undoStack.length === 0) return;
+      const entry = appState.undoStack.pop();
+      appState.redoStack.push(entry);
+      appState.lastHistoryMeta = { key: null, at: 0 };
+      applyWorkspaceSnapshot(entry.before);
+      updateUndoRedoUI();
+      showToast(`Urungkan: ${entry.label}`);
+    }
+
+    function redoGlobalWeb() {
+      if (appState.redoStack.length === 0) return;
+      const entry = appState.redoStack.pop();
+      appState.undoStack.push(entry);
+      appState.lastHistoryMeta = { key: null, at: 0 };
+      applyWorkspaceSnapshot(entry.after);
+      updateUndoRedoUI();
+      showToast(`Ulangi: ${entry.label}`);
+    }
+
+    function updateUndoRedoUI() {
+      const undoBtn = document.getElementById('globalUndoBtn');
+      const redoBtn = document.getElementById('globalRedoBtn');
+      const labelEl = document.getElementById('globalHistoryLabel');
+      if (!undoBtn || !redoBtn || !labelEl) return;
+      const lastUndo = appState.undoStack[appState.undoStack.length - 1];
+      const lastRedo = appState.redoStack[appState.redoStack.length - 1];
+      undoBtn.disabled = !lastUndo;
+      redoBtn.disabled = !lastRedo;
+      undoBtn.title = lastUndo ? `Urungkan: ${lastUndo.label}` : 'Urungkan (Ctrl+Z)';
+      redoBtn.title = lastRedo ? `Ulangi: ${lastRedo.label}` : 'Ulangi (Ctrl+Shift+Z)';
+      if (lastUndo) {
+        labelEl.textContent = lastUndo.label;
+      } else if (lastRedo) {
+        labelEl.textContent = `Redo: ${lastRedo.label}`;
+      } else {
+        labelEl.textContent = 'Belum ada riwayat edit';
+      }
+    }
 
     function setShowcaseRatio(ratio) {
       const frame = document.getElementById('showcaseVerticalFrame');
@@ -1545,7 +1758,7 @@
       endSlider.max = maxDur;
       startSlider.value = appState.homeTrimStart;
       endSlider.value = appState.homeTrimEnd;
-      onHomeTrimInput();
+      onHomeTrimInput(false);
       showToast(`Video "${meta.title}" siap dipotong & dianalisis!`);
     }
 
@@ -1622,7 +1835,8 @@
       return 'URL Video';
     }
 
-    function onHomeTrimInput() {
+    function onHomeTrimInput(recordHistory = true) {
+      const before = recordHistory ? cloneWorkspaceSnapshot() : null;
       let s = parseFloat(document.getElementById('homeTrimStart').value);
       let e = parseFloat(document.getElementById('homeTrimEnd').value);
       if (e <= s + 1) {
@@ -1632,6 +1846,51 @@
       appState.homeTrimStart = s;
       appState.homeTrimEnd = e;
       document.getElementById('homeTrimText').textContent = `${fmtSec(s)} – ${fmtSec(e)}`;
+      if (recordHistory && before) {
+        commitHistoryAction('Potong Timeline Studio', before, 'studio:trim');
+      }
+    }
+
+    function onHomeTopicInput(val) {
+      const before = cloneWorkspaceSnapshot();
+      appState.homeTopic = val;
+      commitHistoryAction('Fokus Topik Studio', before, 'studio:topic');
+    }
+
+    function setHomePlatform(platformId) {
+      if (appState.selectedPlatform === platformId) return;
+      const before = cloneWorkspaceSnapshot();
+      appState.selectedPlatform = platformId;
+      initPlatformChips();
+      commitHistoryAction('Target Platform Studio', before);
+    }
+
+    function updateHomeWatermarkUI() {
+      const noneBtn = document.getElementById('homeWmNone');
+      const brandBtn = document.getElementById('homeWmBrand');
+      if (noneBtn) noneBtn.classList.toggle('selected', !appState.homeWatermark);
+      if (brandBtn) brandBtn.classList.toggle('selected', !!appState.homeWatermark);
+    }
+
+    function setHomeWatermark(include) {
+      const next = !!include;
+      if (appState.homeWatermark === next) return;
+      const before = cloneWorkspaceSnapshot();
+      appState.homeWatermark = next;
+      updateHomeWatermarkUI();
+      commitHistoryAction(next ? 'Dengan Watermark Studio' : 'Tanpa Watermark Studio', before);
+    }
+
+    function updateBatchWatermarkUI() {
+      const noneBtn = document.getElementById('batchWmNone');
+      const brandBtn = document.getElementById('batchWmBrand');
+      if (noneBtn) noneBtn.classList.toggle('selected', !appState.batchWatermark);
+      if (brandBtn) brandBtn.classList.toggle('selected', !!appState.batchWatermark);
+    }
+
+    function setBatchWatermark(include) {
+      appState.batchWatermark = !!include;
+      updateBatchWatermarkUI();
     }
 
     function previewHomeTrim() {
@@ -1778,6 +2037,7 @@
           showSubtitles: true,
           subtitleText: `${hooks[i]} | Simak sampai selesai!`,
           includeAudio: true,
+          includeWatermark: !!appState.homeWatermark,
           musicId: music.id,
           musicTitle: music.title,
           musicUrl: null,
@@ -1814,6 +2074,7 @@
         showSubtitles: true,
         subtitleText: `Sorotan utama ${video.title}`,
         includeAudio: true,
+        includeWatermark: !!appState.homeWatermark,
         musicId: ROYALTY_FREE_MUSIC[0].id,
         musicTitle: ROYALTY_FREE_MUSIC[0].title,
         musicUrl: null,
@@ -1869,6 +2130,7 @@
             <div style="font-size:0.88rem; font-weight:600; margin-top:3px;">${escapeHtml(c.hookLine)}</div>
             <div style="font-size:0.74rem; color:var(--muted);">${fmtSec(c.startSec)}–${fmtSec(c.endSec)} • 🎵 ${escapeHtml(c.musicTitle || 'Tanpa Musik')}</div>
           </div>
+          <button class="chip" style="min-height:36px;" title="Antrekan render latar belakang" onclick="event.stopPropagation(); enqueueClipObjectToExportQueue(${c.id})">⏳</button>
           <button class="chip" style="min-height:36px;" onclick="event.stopPropagation(); toggleFavClip(${c.id})">${c.isFavorite ? '🔖' : '📑'}</button>
           <button class="btn btn-purple btn-pill">▶ Edit</button>
         </div>
@@ -1877,12 +2139,18 @@
 
     function toggleFavClip(id) {
       const c = appState.clips.find(x => x.id === id);
-      if (c) c.isFavorite = !c.isFavorite;
+      if (!c) return;
+      const before = cloneWorkspaceSnapshot();
+      c.isFavorite = !c.isFavorite;
+      commitHistoryAction(c.isFavorite ? 'Tandai Favorit Klip' : 'Hapus Favorit Klip', before);
       renderClipsList();
     }
 
     function bookmarkAllClips() {
+      if (appState.clips.length === 0) return;
+      const before = cloneWorkspaceSnapshot();
       appState.clips.forEach(c => c.isFavorite = true);
+      commitHistoryAction('Simpan Semua Klip ke Favorit', before);
       showToast(`Semua ${appState.clips.length} klip disimpan ke Favorit!`);
       renderClipsList();
     }
@@ -1967,8 +2235,15 @@
       document.getElementById('editorHookTextPreview').textContent = clip.hookLine;
 
       const subBox = document.getElementById('editorSubtitleOverlay');
-      subBox.style.display = clip.showSubtitles && clip.subtitleText ? 'block' : 'none';
+      const hasSub = clip.showSubtitles && clip.subtitleText;
+      subBox.style.display = hasSub ? 'block' : 'none';
       subBox.textContent = clip.subtitleText || '';
+
+      const wmBox = document.getElementById('editorWatermarkOverlay');
+      if (wmBox) {
+        wmBox.style.display = clip.includeWatermark ? 'block' : 'none';
+        wmBox.style.bottom = hasSub ? '54px' : '12px';
+      }
 
       document.getElementById('editorTimecode').textContent = `${fmtSec(v.currentTime || clip.startSec)} / ${fmtSec(clip.endSec)}`;
     }
@@ -2051,14 +2326,21 @@
           <textarea class="input-field" oninput="updateActiveClipField('captionText', this.value)">${escapeHtml(clip.captionText)}</textarea>`;
       } else if (appState.activeTool === 'ratio') {
         panel.innerHTML = `
-          <strong>📐 Rasio Bingkai &amp; Audio Asli</strong>
+          <strong>📐 Rasio Bingkai, Audio &amp; Watermark</strong>
           <div class="chip-row">
             ${ASPECT_RATIOS.map(r => `<button class="chip ${clip.aspectRatio === r.id ? 'selected' : ''}" onclick="updateActiveClipField('aspectRatio', '${r.id}')">${r.id}</button>`).join('')}
           </div>
           <label class="switch-row">
             <span>🔊 Sertakan Audio Asli Video</span>
             <input type="checkbox" class="switch-input" ${clip.includeAudio ? 'checked' : ''} onchange="updateActiveClipField('includeAudio', this.checked)" />
-          </label>`;
+          </label>
+          <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+            <span style="font-size:0.84rem; font-weight:600;">Watermark Video</span>
+            <div class="chip-row">
+              <button class="chip ${!clip.includeWatermark ? 'selected' : ''}" onclick="updateActiveClipField('includeWatermark', false)">✨ Tanpa Watermark</button>
+              <button class="chip ${clip.includeWatermark ? 'selected' : ''}" onclick="updateActiveClipField('includeWatermark', true)">🏷️ Dengan Watermark</button>
+            </div>
+          </div>`;
       } else if (appState.activeTool === 'filter') {
         panel.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -2097,8 +2379,10 @@
     function updateClipTrim(startVal, endVal) {
       const clip = getActiveClip();
       if (!clip) return;
+      const before = cloneWorkspaceSnapshot();
       if (startVal !== null) clip.startSec = Math.min(parseFloat(startVal), clip.endSec - 1);
       if (endVal !== null) clip.endSec = Math.max(parseFloat(endVal), clip.startSec + 1);
+      commitHistoryAction('Potong Timeline Klip', before, `clip:${clip.id}:trim`);
       const v = document.getElementById('editorVideo');
       v.currentTime = clip.startSec;
       renderEditorScreen();
@@ -2107,9 +2391,30 @@
     function updateActiveClipField(key, val) {
       const clip = getActiveClip();
       if (!clip) return;
+      const before = cloneWorkspaceSnapshot();
       clip[key] = val;
+      const coalesce = ['brightness', 'hookLine', 'subtitleText', 'captionText'].includes(key)
+        ? `clip:${clip.id}:${key}`
+        : null;
+      const labelMap = {
+        aspectRatio: 'Rasio Aspek',
+        filter: 'Filter Warna',
+        brightness: 'Kecerahan',
+        hookLine: 'Teks Hook 3 Detik',
+        hookDurationSec: 'Durasi Hook',
+        hookStyle: 'Gaya Hook',
+        showIntroHook: 'Toggle Hook Visual',
+        showSubtitles: 'Toggle Subtitle',
+        subtitleText: 'Teks Subtitle',
+        captionText: 'Caption Media Sosial',
+        includeAudio: 'Audio Asli',
+        includeWatermark: 'Pengaturan Watermark',
+        transitionStyle: 'Gaya Transisi',
+        transitionDurationMs: 'Durasi Transisi'
+      };
+      commitHistoryAction(labelMap[key] || 'Edit Klip', before, coalesce);
       updateEditorPreviewVisuals(clip);
-      if (['hookStyle', 'hookDurationSec', 'filter', 'aspectRatio', 'transitionStyle', 'transitionDurationMs', 'brightness'].includes(key)) {
+      if (['hookStyle', 'hookDurationSec', 'filter', 'aspectRatio', 'includeWatermark', 'transitionStyle', 'transitionDurationMs', 'brightness'].includes(key)) {
         renderEditorToolPanel(clip);
       }
     }
@@ -2117,18 +2422,22 @@
     function resetEditorFilter() {
       const clip = getActiveClip();
       if (!clip) return;
+      const before = cloneWorkspaceSnapshot();
       clip.filter = 'NONE';
       clip.brightness = 0;
+      commitHistoryAction('Reset Filter & Cahaya', before);
       renderEditorScreen();
     }
 
     function runAiMusicRecommend() {
       const clip = getActiveClip();
       if (!clip) return;
+      const before = cloneWorkspaceSnapshot();
       const track = ROYALTY_FREE_MUSIC[Math.floor(Math.random() * ROYALTY_FREE_MUSIC.length)];
       clip.musicId = track.id;
       clip.musicTitle = track.title;
       clip.musicUrl = null;
+      commitHistoryAction('Rekomendasi Musik AI', before);
       showToast(`[Sampel AI] Mood terdeteksi (${track.mood}) — musik "${track.title}" dipasang!`);
       renderEditorScreen();
     }
@@ -2136,6 +2445,7 @@
     function selectEditorMusic(trackId) {
       const clip = getActiveClip();
       if (!clip) return;
+      const before = cloneWorkspaceSnapshot();
       if (!trackId) {
         clip.musicId = null;
         clip.musicTitle = null;
@@ -2149,6 +2459,7 @@
           clip.musicUrl = null;
         }
       }
+      commitHistoryAction('Pilih Musik Latar', before);
       renderEditorScreen();
     }
 
@@ -2161,9 +2472,11 @@
         showToast('URL audio tidak valid atau mengarah ke skema/jaringan lokal yang diblokir.');
         return;
       }
+      const before = cloneWorkspaceSnapshot();
       clip.musicId = 'custom';
       clip.musicTitle = safeUrl.split('/').pop()?.split('?')[0] || 'URL Audio Kustom';
       clip.musicUrl = safeUrl;
+      commitHistoryAction('Musik URL Kustom', before);
       showToast(`Musik URL "${clip.musicTitle}" dipasang!`);
       renderEditorScreen();
     }
@@ -2219,6 +2532,7 @@
     function generate3SecHookAi() {
       const clip = getActiveClip();
       if (!clip) return;
+      const before = cloneWorkspaceSnapshot();
       const samples = [
         `[Sampel AI] Jangan lewatkan 3 detik pertama ini! 🔥`,
         `[Sampel AI] Rahasia hasil maksimal dalam ${Math.round(clip.endSec - clip.startSec)} detik!`,
@@ -2227,6 +2541,7 @@
       clip.hookLine = samples[Math.floor(Math.random() * samples.length)];
       clip.showIntroHook = true;
       clip.hookDurationSec = 3;
+      commitHistoryAction('Buat Visual Hook AI', before);
       showToast('[Sampel AI] Visual Hook 3 detik otomatis dibuat!');
       renderEditorScreen();
     }
@@ -2253,7 +2568,7 @@
 
       const [w, h] = computePixelDims(clip.aspectRatio, clip.quality);
       document.getElementById('exportSummaryTitle').textContent = clip.title;
-      document.getElementById('exportSummarySub').textContent = `${clip.aspectRatio === '9:16' || clip.aspectRatio === '4:5' ? 'Format Vertikal' : 'Format'} • ${clip.aspectRatio} • ${clip.quality} • Transisi ${clip.transitionStyle}`;
+      document.getElementById('exportSummarySub').textContent = `${clip.aspectRatio === '9:16' || clip.aspectRatio === '4:5' ? 'Format Vertikal' : 'Format'} • ${clip.aspectRatio} • ${clip.quality} • Transisi ${clip.transitionStyle} • ${clip.includeWatermark ? 'Dengan Watermark' : 'Tanpa Watermark'}`;
       document.getElementById('exportDimPill').textContent = `${w}×${h}`;
 
       document.getElementById('exportFormatGrid').innerHTML = ASPECT_RATIOS.map(r => `
@@ -2272,32 +2587,58 @@
           </div>`;
       }).join('');
 
+      const wmNoneCard = document.getElementById('expWmNoneCard');
+      const wmBrandCard = document.getElementById('expWmBrandCard');
+      if (wmNoneCard) wmNoneCard.classList.toggle('selected', !clip.includeWatermark);
+      if (wmBrandCard) wmBrandCard.classList.toggle('selected', !!clip.includeWatermark);
+
       document.getElementById('expSubToggle').checked = !!clip.showSubtitles;
       document.getElementById('expHookToggle').checked = !!clip.showIntroHook;
       document.getElementById('expAudioToggle').checked = !!clip.includeAudio;
       document.getElementById('expMusicToggle').checked = !!clip.musicId;
     }
 
+    function setExpWatermark(include) {
+      const c = getActiveClip();
+      if (!c) return;
+      const next = !!include;
+      if (!!c.includeWatermark === next) return;
+      const before = cloneWorkspaceSnapshot();
+      c.includeWatermark = next;
+      commitHistoryAction(next ? 'Ekspor Dengan Watermark' : 'Ekspor Tanpa Watermark', before);
+      renderExportSettingsScreen();
+    }
+
     function setExportRatio(id) {
       const c = getActiveClip();
-      if (c) c.aspectRatio = id;
+      if (!c) return;
+      const before = cloneWorkspaceSnapshot();
+      c.aspectRatio = id;
+      commitHistoryAction('Rasio Ekspor', before);
       renderExportSettingsScreen();
     }
 
     function setExportQuality(id) {
       const c = getActiveClip();
-      if (c) c.quality = id;
+      if (!c) return;
+      const before = cloneWorkspaceSnapshot();
+      c.quality = id;
+      commitHistoryAction('Resolusi Ekspor', before);
       renderExportSettingsScreen();
     }
 
     function toggleExpField(key, val) {
       const c = getActiveClip();
-      if (c) c[key] = val;
+      if (!c) return;
+      const before = cloneWorkspaceSnapshot();
+      c[key] = val;
+      commitHistoryAction('Opsi Ekspor', before);
     }
 
     function toggleExpMusic(enabled) {
       const c = getActiveClip();
       if (!c) return;
+      const before = cloneWorkspaceSnapshot();
       if (enabled && !c.musicId) {
         c.musicId = ROYALTY_FREE_MUSIC[0].id;
         c.musicTitle = ROYALTY_FREE_MUSIC[0].title;
@@ -2305,11 +2646,13 @@
         c.musicId = null;
         c.musicTitle = null;
       }
+      commitHistoryAction('Musik Ekspor', before);
     }
 
     async function startWebExportRender(isCombined = false) {
       const clip = getActiveClip();
       if (!clip) return;
+      appState.isForegroundExporting = true;
       const btn = document.getElementById('startExportBtn');
       const card = document.getElementById('exportRenderProgressCard');
       btn.disabled = true;
@@ -2347,6 +2690,7 @@
 
       appState.exportedClips.unshift(exportedItem);
       appState.lastExport = exportedItem;
+      appState.isForegroundExporting = false;
       updateBadges();
       btn.disabled = false;
       card.style.display = 'none';
@@ -2449,6 +2793,33 @@
                 ctx.fillText(clip.subtitleText.slice(0, 42), cw / 2, ch - 40);
               }
 
+              if (clip.includeWatermark) {
+                ctx.save();
+                ctx.font = 'bold 12px sans-serif';
+                const wmLabel = 'Aldi AI Clipper';
+                const wmWidth = ctx.measureText(wmLabel).width + 20;
+                const wmHeight = 26;
+                const wmX = cw - wmWidth - 14;
+                const wmY = 14;
+                ctx.fillStyle = 'rgba(11, 14, 20, 0.82)';
+                ctx.strokeStyle = 'rgba(6, 182, 212, 0.72)';
+                ctx.lineWidth = 1.5;
+                if (typeof ctx.roundRect === 'function') {
+                  ctx.beginPath();
+                  ctx.roundRect(wmX, wmY, wmWidth, wmHeight, 99);
+                  ctx.fill();
+                  ctx.stroke();
+                } else {
+                  ctx.fillRect(wmX, wmY, wmWidth, wmHeight);
+                  ctx.strokeRect(wmX, wmY, wmWidth, wmHeight);
+                }
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(wmLabel, wmX + wmWidth / 2, wmY + wmHeight / 2);
+                ctx.restore();
+              }
+
               if (elapsedSec < durationSec) {
                 requestAnimationFrame(drawFrame);
               } else {
@@ -2546,6 +2917,7 @@
           id: 'b_' + Math.random().toString(36).slice(2, 8),
           label: file.name,
           url: URL.createObjectURL(file),
+          includeWatermark: !!appState.batchWatermark,
           status: 'QUEUED',
           progress: 0,
           detail: 'Menunggu antrean…'
@@ -2565,6 +2937,7 @@
         id: 'b_' + Math.random().toString(36).slice(2, 8),
         label: url.replace(/^https?:\/\//, '').slice(0, 38),
         url,
+        includeWatermark: !!appState.batchWatermark,
         status: 'QUEUED',
         progress: 0,
         detail: 'URL masuk antrean'
@@ -2586,6 +2959,7 @@
           id: 'b_' + Math.random().toString(36).slice(2, 8),
           label: url.replace(/^https?:\/\//, '').slice(0, 38),
           url,
+          includeWatermark: !!appState.batchWatermark,
           status: 'QUEUED',
           progress: 0,
           detail: 'Siap diproses'
@@ -2595,6 +2969,35 @@
       document.getElementById('batchUrlsInput').value = '';
       updateBadges();
       renderBatchQueue();
+    }
+
+    function setBatchTab(tab) {
+      appState.batchTab = tab === 'ai' ? 'ai' : 'render';
+      const renderSec = document.getElementById('renderQueueSection');
+      const aiSec = document.getElementById('aiBatchSection');
+      const tabR = document.getElementById('batchTabRenderBtn');
+      const tabA = document.getElementById('batchTabAiBtn');
+      if (renderSec && aiSec && tabR && tabA) {
+        renderSec.style.display = appState.batchTab === 'render' ? 'flex' : 'none';
+        aiSec.style.display = appState.batchTab === 'ai' ? 'flex' : 'none';
+        tabR.classList.toggle('selected', appState.batchTab === 'render');
+        tabA.classList.toggle('selected', appState.batchTab === 'ai');
+      }
+      renderBatchQueue();
+      renderExportRenderQueue();
+    }
+
+    function openRenderQueueTab() {
+      navigate('batch');
+      setBatchTab('render');
+    }
+
+    function clearActiveQueueTab() {
+      if (appState.batchTab === 'render') {
+        clearCompletedExportRenderQueue();
+      } else {
+        clearCompletedBatch();
+      }
     }
 
     function clearCompletedBatch() {
@@ -2631,6 +3034,7 @@
 
     function renderBatchQueue() {
       const container = document.getElementById('batchQueueList');
+      if (!container) return;
       if (appState.batchQueue.length === 0) {
         container.innerHTML = `<div class="card" style="text-align:center; color:var(--muted);">Antrean masih kosong. Unggah banyak file atau tambahkan URL di atas.</div>`;
         return;
@@ -2641,10 +3045,281 @@
             <strong style="font-size:0.9rem;">${escapeHtml(item.label)}</strong>
             <span class="badge">${item.status === 'COMPLETED' ? 'Selesai' : item.status === 'ANALYZING' ? 'Memproses' : 'Menunggu'}</span>
           </div>
-          <div style="font-size:0.78rem; color:var(--muted);">${item.detail} (${item.progress}%)</div>
+          <div style="font-size:0.78rem; color:var(--muted);">${escapeHtml(item.detail)} • ${item.includeWatermark ? 'Dengan Watermark' : 'Tanpa Watermark'} (${item.progress}%)</div>
           <div class="progress-track"><div class="progress-fill" style="width:${item.progress}%;"></div></div>
         </div>
       `).join('');
+    }
+
+    // --- Background Export Render Queue ---
+    function snapshotClipForExport(clip) {
+      return {
+        ...clip,
+        sourceVideo: clip.sourceVideo ? { ...clip.sourceVideo } : null
+      };
+    }
+
+    function enqueueHomeManualClipToExportQueue() {
+      const video = appState.selectedVideo;
+      if (!video) return showToast('Pilih video terlebih dahulu.');
+      const plat = TARGET_PLATFORMS.find(p => p.id === appState.selectedPlatform) || TARGET_PLATFORMS[0];
+      const manualClip = {
+        id: Date.now(),
+        title: `Klip Manual (${video.title.slice(0, 18)})`,
+        viralScore: 90,
+        hookLine: `[Sampel AI] Momen pilihan terbaik ${video.title.slice(0, 24)}`,
+        captionText: `Klip pilihan dari ${video.title}.`,
+        hashtags: '#AldiAIClipper #ClipManual',
+        startSec: appState.homeTrimStart,
+        endSec: appState.homeTrimEnd,
+        aspectRatio: plat.ratio,
+        quality: '1080p',
+        filter: 'NONE',
+        brightness: 0,
+        showIntroHook: true,
+        hookDurationSec: 3,
+        hookStyle: 'neon_badge',
+        showSubtitles: true,
+        subtitleText: `Sorotan utama ${video.title}`,
+        includeAudio: true,
+        includeWatermark: !!appState.homeWatermark,
+        musicId: ROYALTY_FREE_MUSIC[0].id,
+        musicTitle: ROYALTY_FREE_MUSIC[0].title,
+        musicUrl: null,
+        musicVolume: 0.35,
+        transitionStyle: 'FADE',
+        transitionDurationMs: 600,
+        isFavorite: false,
+        sourceVideo: { ...video }
+      };
+      enqueueClipSnapshotJob(manualClip);
+    }
+
+    function enqueueActiveClipToExportQueue(goBackAfter = false) {
+      const clip = getActiveClip();
+      if (!clip) return showToast('Pilih klip terlebih dahulu.');
+      enqueueClipSnapshotJob(clip);
+      if (goBackAfter) navigate('clips');
+    }
+
+    function enqueueClipObjectToExportQueue(clipId) {
+      const clip = appState.clips.find(c => c.id === clipId);
+      if (!clip) return;
+      enqueueClipSnapshotJob(clip);
+    }
+
+    function enqueueAllClipsToExportQueue() {
+      if (appState.clips.length === 0) return;
+      let count = 0;
+      appState.clips.forEach(c => {
+        if (enqueueClipSnapshotJob(c, true)) count++;
+      });
+      if (count > 0) {
+        showToast(`${count} klip masuk antrean render latar belakang! Anda bebas mengedit video lain.`);
+        runExportRenderQueue();
+      }
+    }
+
+    function enqueueClipSnapshotJob(clip, silent = false) {
+      const safeSrc = sanitizeMediaSrc(clip.sourceVideo?.streamUrl || POPULAR_VIDEOS[0].streamUrl);
+      if (!safeSrc) {
+        if (!silent) showToast('Sumber video tidak aman untuk dirender.');
+        return false;
+      }
+      const snapshot = snapshotClipForExport(clip);
+      if (snapshot.sourceVideo) snapshot.sourceVideo.streamUrl = safeSrc;
+      appState.exportRenderQueue.push({
+        id: 'rq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        clipSnapshot: snapshot,
+        status: 'QUEUED',
+        progress: 0,
+        detail: 'Menunggu giliran render latar belakang…',
+        exportedItem: null,
+        cancelled: false
+      });
+      updateBadges();
+      renderExportRenderQueue();
+      if (!silent) {
+        showToast(`"${snapshot.title}" masuk antrean render latar belakang.`);
+        runExportRenderQueue();
+      }
+      return true;
+    }
+
+    async function runExportRenderQueue() {
+      if (appState.isRenderQueueRunning) return;
+      appState.isRenderQueueRunning = true;
+      updateBgRenderStrip();
+
+      while (true) {
+        const nextJob = appState.exportRenderQueue.find(j => j.status === 'QUEUED');
+        if (!nextJob) break;
+
+        while (appState.isForegroundExporting) {
+          await new Promise(r => setTimeout(r, 250));
+        }
+        if (nextJob.cancelled || nextJob.status !== 'QUEUED') continue;
+
+        nextJob.status = 'RENDERING';
+        nextJob.progress = 5;
+        nextJob.detail = `Merender ${nextJob.clipSnapshot.quality} (${nextJob.clipSnapshot.aspectRatio})…`;
+        updateBgRenderStrip();
+        renderExportRenderQueue();
+
+        const clip = nextJob.clipSnapshot;
+        const [outW, outH] = computePixelDims(clip.aspectRatio, clip.quality);
+        const scale = Math.min(1, 720 / Math.max(outW, outH));
+        const cw = Math.max(240, Math.round(outW * scale) & ~1);
+        const ch = Math.max(240, Math.round(outH * scale) & ~1);
+
+        let exportedBlobUrl = null;
+        try {
+          exportedBlobUrl = await renderClipToBlob(clip, cw, ch, false, (pct) => {
+            if (!nextJob.cancelled) {
+              nextJob.progress = pct;
+              updateBgRenderStrip();
+              renderExportRenderQueue();
+            }
+          });
+        } catch (_) {
+          for (const pct of [25, 50, 75, 100]) {
+            if (nextJob.cancelled) break;
+            nextJob.progress = pct;
+            updateBgRenderStrip();
+            renderExportRenderQueue();
+            await new Promise(r => setTimeout(r, 280));
+          }
+        }
+
+        if (nextJob.cancelled) {
+          nextJob.status = 'CANCELLED';
+          nextJob.detail = 'Dibatalkan pengguna';
+        } else {
+          const exportedItem = {
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            title: clip.title,
+            ratio: clip.aspectRatio,
+            quality: clip.quality,
+            dims: `${outW}×${outH}`,
+            transition: clip.transitionStyle,
+            musicTitle: clip.musicTitle,
+            blobUrl: exportedBlobUrl || clip.sourceVideo?.streamUrl || POPULAR_VIDEOS[0].streamUrl,
+            isRecordedBlob: !!exportedBlobUrl,
+            caption: `${clip.hookLine}\n\n${clip.captionText}\n${clip.hashtags}`,
+            createdAt: new Date().toLocaleTimeString('id-ID')
+          };
+          appState.exportedClips.unshift(exportedItem);
+          nextJob.exportedItem = exportedItem;
+          nextJob.status = 'COMPLETED';
+          nextJob.progress = 100;
+          nextJob.detail = 'Ekspor selesai • Siap di Galeri';
+          showToast(`Render selesai: ${clip.title}`);
+        }
+
+        updateBadges();
+        updateBgRenderStrip();
+        renderExportRenderQueue();
+        if (appState.screen === 'exports') renderExportsGallery();
+      }
+
+      appState.isRenderQueueRunning = false;
+      updateBgRenderStrip();
+    }
+
+    function cancelExportRenderJob(jobId) {
+      const job = appState.exportRenderQueue.find(j => j.id === jobId);
+      if (!job) return;
+      job.cancelled = true;
+      job.status = 'CANCELLED';
+      job.detail = 'Dibatalkan pengguna';
+      updateBadges();
+      updateBgRenderStrip();
+      renderExportRenderQueue();
+    }
+
+    function retryExportRenderJob(jobId) {
+      const job = appState.exportRenderQueue.find(j => j.id === jobId);
+      if (!job) return;
+      job.cancelled = false;
+      job.status = 'QUEUED';
+      job.progress = 0;
+      job.detail = 'Mengulang render latar belakang…';
+      updateBadges();
+      updateBgRenderStrip();
+      renderExportRenderQueue();
+      runExportRenderQueue();
+    }
+
+    function removeExportRenderJob(jobId) {
+      appState.exportRenderQueue = appState.exportRenderQueue.filter(j => j.id !== jobId);
+      updateBadges();
+      updateBgRenderStrip();
+      renderExportRenderQueue();
+    }
+
+    function clearCompletedExportRenderQueue() {
+      appState.exportRenderQueue = appState.exportRenderQueue.filter(j => j.status !== 'COMPLETED');
+      updateBadges();
+      updateBgRenderStrip();
+      renderExportRenderQueue();
+    }
+
+    function updateBgRenderStrip() {
+      const strip = document.getElementById('bgRenderStrip');
+      if (!strip) return;
+      const jobs = appState.exportRenderQueue;
+      const pending = jobs.filter(j => j.status === 'QUEUED' || j.status === 'RENDERING');
+      if (pending.length === 0) {
+        strip.style.display = 'none';
+        return;
+      }
+      const active = pending.find(j => j.status === 'RENDERING') || pending[0];
+      const done = jobs.filter(j => j.status === 'COMPLETED').length;
+      strip.style.display = 'block';
+      document.getElementById('bgRenderStripTitle').textContent = `Render Latar Belakang (${done}/${jobs.length})`;
+      document.getElementById('bgRenderStripSub').textContent = `${active.clipSnapshot.title} • ${active.progress}%`;
+      document.getElementById('bgRenderStripFill').style.width = `${active.progress}%`;
+    }
+
+    function renderExportRenderQueue() {
+      const container = document.getElementById('exportRenderQueueList');
+      const pctEl = document.getElementById('renderQueueOverallPct');
+      const fillEl = document.getElementById('renderQueueOverallFill');
+      if (!container) return;
+      const jobs = appState.exportRenderQueue;
+      const overall = jobs.length === 0 ? 0 : Math.round(jobs.reduce((acc, j) => acc + j.progress, 0) / jobs.length);
+      if (pctEl) pctEl.textContent = `${overall}%`;
+      if (fillEl) fillEl.style.width = `${overall}%`;
+
+      if (jobs.length === 0) {
+        container.innerHTML = `<div class="card" style="text-align:center; color:var(--muted);">Belum ada tugas render latar belakang. Klik "Antrekan Ekspor" di Studio, Daftar Klip, atau Editor.</div>`;
+        return;
+      }
+
+      container.innerHTML = jobs.map((job, idx) => {
+        const badgeText = job.status === 'COMPLETED' ? 'Selesai'
+          : job.status === 'RENDERING' ? 'Merender'
+          : job.status === 'CANCELLED' ? 'Dibatalkan'
+          : 'Menunggu';
+        const actionsHtml = (job.status === 'QUEUED' || job.status === 'RENDERING')
+          ? `<button class="chip" style="min-height:34px;" onclick="cancelExportRenderJob('${job.id}')">⏹ Batal</button>`
+          : job.status === 'COMPLETED' && job.exportedItem
+            ? `<button class="btn btn-purple btn-pill" onclick="appState.lastExport = appState.exportRenderQueue[${idx}].exportedItem; showSuccessScreen(appState.lastExport)">▶ Putar Hasil</button>`
+            : `<div style="display:flex; gap:6px;"><button class="chip" style="min-height:34px;" onclick="retryExportRenderJob('${job.id}')">↻ Ulangi</button><button class="chip" style="min-height:34px;" onclick="removeExportRenderJob('${job.id}')">✕</button></div>`;
+        return `
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div style="min-width:0;">
+                <strong style="font-size:0.9rem;">#${idx + 1} ${escapeHtml(job.clipSnapshot.title)}</strong>
+                <div style="font-size:0.74rem; color:var(--muted);">${job.clipSnapshot.aspectRatio} • ${job.clipSnapshot.quality} • Filter ${job.clipSnapshot.filter} • ${job.clipSnapshot.includeWatermark ? 'Dengan Watermark' : 'Tanpa Watermark'}</div>
+              </div>
+              <span class="badge">${badgeText}</span>
+            </div>
+            <div style="font-size:0.78rem; color:var(--muted);">${escapeHtml(job.detail)} (${job.progress}%)</div>
+            <div class="progress-track"><div class="progress-fill" style="width:${job.progress}%;"></div></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">${actionsHtml}</div>
+          </div>`;
+      }).join('');
     }
 
     function renderExportsGallery() {
@@ -2682,9 +3357,17 @@
     }
 
     function updateBadges() {
-      document.getElementById('railBatchCount').textContent = appState.batchQueue.length;
+      const totalQueueCount = appState.batchQueue.length + appState.exportRenderQueue.length;
+      const pendingRenderCount = appState.exportRenderQueue.filter(j => j.status === 'QUEUED' || j.status === 'RENDERING').length;
+      document.getElementById('railBatchCount').textContent = totalQueueCount;
       document.getElementById('homeBatchBadge').textContent = `${appState.batchQueue.length} item`;
       document.getElementById('railExportCount').textContent = appState.exportedClips.length;
+      const topBadge = document.getElementById('topRenderQueueBadge');
+      if (topBadge) topBadge.textContent = pendingRenderCount || appState.exportRenderQueue.length;
+      const tabR = document.getElementById('tabRenderCount');
+      const tabA = document.getElementById('tabAiCount');
+      if (tabR) tabR.textContent = appState.exportRenderQueue.length;
+      if (tabA) tabA.textContent = appState.batchQueue.length;
     }
 
     function escapeHtml(str) {
@@ -2739,7 +3422,7 @@
     function initPlatformChips() {
       const wrap = document.getElementById('homePlatformChips');
       wrap.innerHTML = TARGET_PLATFORMS.map(p => `
-        <button class="chip ${appState.selectedPlatform === p.id ? 'selected' : ''}" onclick="appState.selectedPlatform='${p.id}'; initPlatformChips();">${p.label}</button>
+        <button class="chip ${appState.selectedPlatform === p.id ? 'selected' : ''}" onclick="setHomePlatform('${p.id}')">${p.label}</button>
       `).join('');
     }
 
@@ -2753,13 +3436,30 @@
         }
         updateEditorPreviewVisuals(clip);
       });
+
+      document.addEventListener('keydown', (e) => {
+        if (appState.mode !== 'studio') return;
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea') return;
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) redoGlobalWeb();
+          else undoGlobalWeb();
+        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+          e.preventDefault();
+          redoGlobalWeb();
+        }
+      });
     });
 
     (function boot() {
       initPlatformChips();
+      updateHomeWatermarkUI();
+      updateBatchWatermarkUI();
       renderHomePopular();
       renderWebsiteDemoGrid();
       updateBadges();
+      updateUndoRedoUI();
 
       const params = new URLSearchParams(window.location.search);
       const sharedUrl = params.get('url');

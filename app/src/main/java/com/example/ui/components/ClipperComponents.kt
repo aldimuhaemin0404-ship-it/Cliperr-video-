@@ -42,15 +42,18 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.Info
@@ -90,6 +93,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -105,10 +109,14 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.data.network.UrlSecurityValidator
 import com.example.domain.model.AspectRatioPreset
+import com.example.domain.model.ExportJobStatus
 import com.example.domain.model.ExportProgressState
+import com.example.domain.model.ExportRenderJob
 import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.SubtitleCue
+import com.example.domain.model.UndoHistoryUiState
 import com.example.domain.model.VideoFilterPreset
 import com.example.domain.model.VideoTransitionStyle
 import com.example.media.MediaPlaybackCache
@@ -135,8 +143,10 @@ fun SocialLinkPreviewCard(
     thumbnailUrl: String?,
     statusNote: String?,
     onAttachLocalVideo: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    originalUrl: String? = null
 ) {
+    val uriHandler = LocalUriHandler.current
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -232,6 +242,28 @@ fun SocialLinkPreviewCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                val safeOriginalUrl = originalUrl?.takeIf { UrlSecurityValidator.isSafeExternalHttpUrl(it) }
+                if (safeOriginalUrl != null) {
+                    Button(
+                        onClick = { runCatching { uriHandler.openUri(safeOriginalUrl) } },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NeonPurple,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .minimumInteractiveComponentSize()
+                            .testTag("open_original_social_link_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text("Buka Video di $platformName / Browser")
+                    }
                 }
                 OutlinedButton(
                     onClick = onAttachLocalVideo,
@@ -450,20 +482,20 @@ fun VideoClipPlayerPreview(
     transitionStyle: VideoTransitionStyle = VideoTransitionStyle.FADE,
     transitionDurationMs: Long = 600L,
     selectedMusicTitle: String? = null,
+    includeWatermark: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
-    var playbackError by remember { mutableStateOf<String?>(null) }
+    var playbackNotice by remember { mutableStateOf<String?>(null) }
+    var hasRetriedDirect by remember(videoUri) { mutableStateOf(false) }
+    var hasAttachedEffects by remember(videoUri) { mutableStateOf(false) }
     var currentPosMs by remember { mutableLongStateOf(0L) }
     var showOverlayOnPlay by remember { mutableStateOf(false) }
 
     val latestStartMs by rememberUpdatedState(startMs.coerceAtLeast(0L))
     val latestEndMs by rememberUpdatedState(endMs)
-    val clipDurationMs = remember(startMs, endMs) {
-        ((endMs ?: 10_000L) - startMs).coerceAtLeast(1_500L)
-    }
 
     val exoPlayer = remember(videoUri) {
         MediaPlaybackCache.buildFastExoPlayer(context).apply {
@@ -477,7 +509,7 @@ fun VideoClipPlayerPreview(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
-                    playbackError = null
+                    playbackNotice = null
                 }
             }
 
@@ -489,9 +521,22 @@ fun VideoClipPlayerPreview(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (!hasRetriedDirect) {
+                    hasRetriedDirect = true
+                    playbackNotice = null
+                    if (hasAttachedEffects) {
+                        runCatching { exoPlayer.setVideoEffects(emptyList()) }
+                        hasAttachedEffects = false
+                    }
+                    val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
+                        .createMediaSource(MediaItem.fromUri(videoUri))
+                    exoPlayer.setMediaSource(directSource)
+                    exoPlayer.prepare()
+                    return
+                }
                 isBuffering = false
                 isPlaying = false
-                playbackError = error.localizedMessage ?: "Gagal memutar pratinjau."
+                playbackNotice = "Pratinjau video siap dimuat ulang."
             }
         }
         exoPlayer.addListener(listener)
@@ -503,10 +548,12 @@ fun VideoClipPlayerPreview(
 
     // Prepare media ONLY when videoUri changes so trim drags never reset buffer!
     LaunchedEffect(videoUri) {
-        playbackError = null
-        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness) +
-            VideoTransitionEffects.buildEffects(transitionStyle, transitionDurationMs, clipDurationMs)
-        exoPlayer.setVideoEffects(effects)
+        playbackNotice = null
+        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness)
+        if (effects.isNotEmpty()) {
+            exoPlayer.setVideoEffects(effects)
+            hasAttachedEffects = true
+        }
         exoPlayer.setMediaItem(MediaItem.fromUri(videoUri))
         exoPlayer.prepare()
         if (latestStartMs > 0L) {
@@ -524,10 +571,12 @@ fun VideoClipPlayerPreview(
         }
     }
 
-    LaunchedEffect(exoPlayer, videoFilter, brightness, transitionStyle, transitionDurationMs, clipDurationMs) {
-        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness) +
-            VideoTransitionEffects.buildEffects(transitionStyle, transitionDurationMs, clipDurationMs)
-        exoPlayer.setVideoEffects(effects)
+    LaunchedEffect(exoPlayer, videoFilter, brightness) {
+        val effects = VideoFilterEffects.buildEffects(videoFilter, brightness)
+        if (effects.isNotEmpty() || hasAttachedEffects) {
+            exoPlayer.setVideoEffects(effects)
+            hasAttachedEffects = effects.isNotEmpty()
+        }
     }
 
     LaunchedEffect(isPlaying, showOverlayOnPlay) {
@@ -580,8 +629,11 @@ fun VideoClipPlayerPreview(
                 .background(Color.Black)
                 .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
                 .clickable {
-                    if (playbackError != null) {
-                        playbackError = null
+                    if (playbackNotice != null) {
+                        playbackNotice = null
+                        val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
+                            .createMediaSource(MediaItem.fromUri(videoUri))
+                        exoPlayer.setMediaSource(directSource)
                         exoPlayer.prepare()
                         exoPlayer.play()
                     } else if (exoPlayer.isPlaying) {
@@ -644,7 +696,7 @@ fun VideoClipPlayerPreview(
                 }
             }
 
-            // Top-right aspect ratio, anti-buff & active transition badges
+            // Top-right aspect ratio & active transition badges
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -678,19 +730,22 @@ fun VideoClipPlayerPreview(
                 }
             }
 
-            // Center Play/Pause or Buffering/Retry overlay
-            if (playbackError != null) {
+            // Center Play/Pause or Loading/Retry overlay
+            if (playbackNotice != null) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .padding(12.dp),
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xDC0E1328),
-                    border = BorderStroke(1.dp, NeonPurple)
+                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f))
                 ) {
                     TextButton(
                         onClick = {
-                            playbackError = null
+                            playbackNotice = null
+                            val directSource = MediaPlaybackCache.buildDirectMediaSourceFactory(context)
+                                .createMediaSource(MediaItem.fromUri(videoUri))
+                            exoPlayer.setMediaSource(directSource)
                             exoPlayer.prepare()
                             exoPlayer.play()
                         },
@@ -877,6 +932,28 @@ fun VideoClipPlayerPreview(
                     }
                 }
             }
+
+            if (includeWatermark) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.72f),
+                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.55f)),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(
+                            end = 12.dp,
+                            bottom = if (showCaptionOverlay && !displayOverlayText.isNullOrBlank()) 74.dp else 12.dp
+                        )
+                        .testTag("preview_watermark_badge")
+                ) {
+                    Text(
+                        text = "Aldi AI Clipper",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -1004,7 +1081,7 @@ fun ExportProgressBanner(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.ErrorOutline,
+                            imageVector = Icons.Outlined.Info,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.secondary
                         )
@@ -1030,3 +1107,175 @@ fun ExportProgressBanner(
         }
     }
 }
+
+@Composable
+fun GlobalUndoRedoControls(
+    undoState: UndoHistoryUiState,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    showActionLabel: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = CosmicSurface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (undoState.canUndo || undoState.canRedo) {
+                FuturisticCyan.copy(alpha = 0.5f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        ),
+        modifier = modifier
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.padding(horizontal = 4.dp)
+        ) {
+            IconButton(
+                onClick = onUndo,
+                enabled = undoState.canUndo,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .testTag("global_undo_button")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = if (undoState.undoLabel != null) {
+                        "${stringResource(R.string.action_undo)}: ${undoState.undoLabel}"
+                    } else {
+                        stringResource(R.string.action_undo)
+                    },
+                    tint = if (undoState.canUndo) FuturisticCyan else Color.White.copy(alpha = 0.3f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            if (showActionLabel) {
+                val labelText = when {
+                    undoState.undoLabel != null -> undoState.undoLabel
+                    undoState.redoLabel != null -> "Redo: ${undoState.redoLabel}"
+                    else -> stringResource(R.string.undo_history_empty)
+                }
+                Text(
+                    text = labelText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (undoState.canUndo || undoState.canRedo) {
+                        Color.White.copy(alpha = 0.9f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .widthIn(max = 148.dp)
+                        .padding(horizontal = 2.dp)
+                )
+            }
+
+            IconButton(
+                onClick = onRedo,
+                enabled = undoState.canRedo,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .testTag("global_redo_button")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Redo,
+                    contentDescription = if (undoState.redoLabel != null) {
+                        "${stringResource(R.string.action_redo)}: ${undoState.redoLabel}"
+                    } else {
+                        stringResource(R.string.action_redo)
+                    },
+                    tint = if (undoState.canRedo) NeonPurple else Color.White.copy(alpha = 0.3f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BackgroundRenderQueueStrip(
+    jobs: List<ExportRenderJob>,
+    onOpenQueue: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val activeOrPending = jobs.filter { it.isPendingOrActive }
+    val activeJob = activeOrPending.firstOrNull { it.status == ExportJobStatus.RENDERING }
+        ?: activeOrPending.firstOrNull()
+    val completedCount = jobs.count { it.status == ExportJobStatus.COMPLETED }
+
+    AnimatedVisibility(visible = activeOrPending.isNotEmpty()) {
+        val currentJob = activeJob ?: return@AnimatedVisibility
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = CosmicSurfaceElevated,
+            border = BorderStroke(1.dp, NeonPurple.copy(alpha = 0.7f)),
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onOpenQueue)
+                .testTag("background_render_queue_strip")
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.QueuePlayNext,
+                        contentDescription = null,
+                        tint = FuturisticCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "${stringResource(R.string.export_queue_banner_title)} (${completedCount}/${jobs.size})",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${currentJob.segmentSnapshot.title} • ${currentJob.progressPercent}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = FuturisticCyan,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    TextButton(
+                        onClick = onOpenQueue,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("background_render_queue_view_button")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.export_queue_view_action),
+                            color = FuturisticCyan,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                LinearProgressIndicator(
+                    progress = { (currentJob.progressPercent / 100f).coerceIn(0f, 1f) },
+                    color = FuturisticCyan,
+                    trackColor = CosmicSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                )
+            }
+        }
+    }
+}
+

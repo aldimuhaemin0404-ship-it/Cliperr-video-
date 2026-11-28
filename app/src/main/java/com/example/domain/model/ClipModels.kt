@@ -207,6 +207,7 @@ data class ClipSegment(
     val audioMoodLabel: String? = null,
     val audioBpm: Int? = null,
     val exportQuality: ExportQuality = ExportQuality.HD_1080P,
+    val includeWatermark: Boolean = false,
     val isFavorite: Boolean = false,
     val subtitleCues: List<SubtitleCue> = emptyList(),
     val isPlaceholderAi: Boolean = true

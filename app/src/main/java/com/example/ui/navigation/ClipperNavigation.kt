@@ -82,6 +82,7 @@ import com.example.domain.model.ExportedClip
 import com.example.media.SocialShareHelper
 import com.example.ui.auth.authStateFlow
 import com.example.ui.auth.signOut
+import com.example.ui.components.BackgroundRenderQueueStrip
 import com.example.ui.components.ExportProgressBanner
 import com.example.ui.components.SocialShareBottomSheet
 import com.example.ui.screens.AiAnalysisProgressScreen
@@ -198,6 +199,9 @@ fun AiClipperApp(
                     }
                 }
             )
+            androidx.compose.runtime.LaunchedEffect(signedInUser.uid) {
+                userViewModel.ensureCloudSyncActive()
+            }
             AuthenticatedAiClipperContent(
                 userDisplayName = signedInUser.displayName
                     ?.takeIf { it.isNotBlank() }
@@ -235,6 +239,9 @@ private fun AuthenticatedAiClipperContent(
     val batchQueue by viewModel.batchQueue.collectAsStateWithLifecycle()
     val batchConfig by viewModel.batchConfig.collectAsStateWithLifecycle()
     val isBatchRunning by viewModel.isBatchRunning.collectAsStateWithLifecycle()
+    val exportRenderQueue by viewModel.exportRenderQueue.collectAsStateWithLifecycle()
+    val isRenderQueueRunning by viewModel.isRenderQueueRunning.collectAsStateWithLifecycle()
+    val undoHistoryState by viewModel.undoHistoryState.collectAsStateWithLifecycle()
     val cloudSyncState by viewModel.cloudSyncState.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -374,6 +381,17 @@ private fun AuthenticatedAiClipperContent(
                         .weight(1f)
                         .fillMaxHeight()
                 ) {
+                    if (currentRoute !in setOf(ROUTE_BATCH_QUEUE, ROUTE_ANALYZING, ROUTE_EXPORT_SUCCESS, ROUTE_WEB_PORTAL)) {
+                        BackgroundRenderQueueStrip(
+                            jobs = exportRenderQueue,
+                            onOpenQueue = {
+                                navController.navigate(ROUTE_BATCH_QUEUE) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        )
+                    }
+
                     if (isTopLevel) {
                         ExportProgressBanner(
                             state = exportProgress,
@@ -454,6 +472,11 @@ private fun AuthenticatedAiClipperContent(
                                     isExporting = exportProgress is ExportProgressState.Exporting,
                                     batchQueueCount = batchQueue.size,
                                     isBatchRunning = isBatchRunning,
+                                    exportRenderQueueCount = exportRenderQueue.count { it.isPendingOrActive },
+                                    isRenderQueueRunning = isRenderQueueRunning,
+                                    undoState = undoHistoryState,
+                                    onUndo = viewModel::undoGlobal,
+                                    onRedo = viewModel::redoGlobal,
                                     onImportSourceChanged = viewModel::updateImportSource,
                                     onLinkInputChanged = viewModel::updateLinkInput,
                                     onResolveSocialLink = { viewModel.resolveSocialLink() },
@@ -485,8 +508,12 @@ private fun AuthenticatedAiClipperContent(
                                             navController.navigate("export_settings/$segId")
                                         }
                                     },
+                                    onEnqueueManualClip = {
+                                        viewModel.enqueueManualStudioClipForBackgroundExport(autoStart = true)
+                                    },
                                     onPlatformSelected = viewModel::updateTargetPlatform,
                                     onFocusTopicChanged = viewModel::updateFocusTopic,
+                                    onWatermarkChanged = viewModel::updateStudioWatermark,
                                     onAnalyzeClick = startAnalysisFlow,
                                     onSelectPopularVideo = { item ->
                                         viewModel.loadPopularVideo(item)
@@ -540,6 +567,18 @@ private fun AuthenticatedAiClipperContent(
                                     queueItems = batchQueue,
                                     config = batchConfig,
                                     isBatchRunning = isBatchRunning,
+                                    exportRenderJobs = exportRenderQueue,
+                                    isRenderQueueRunning = isRenderQueueRunning,
+                                    onCancelExportJob = viewModel::cancelExportRenderJob,
+                                    onRetryExportJob = { jobId -> viewModel.retryExportRenderJob(jobId, autoStart = true) },
+                                    onRemoveExportJob = viewModel::removeExportRenderJob,
+                                    onClearCompletedExports = viewModel::clearCompletedExportRenderJobs,
+                                    onOpenExportsGallery = {
+                                        navController.navigate(ROUTE_EXPORTS) {
+                                            popUpTo(ROUTE_STUDIO) { saveState = true }
+                                            launchSingleTop = true
+                                        }
+                                    },
                                     onBack = { navController.popBackStack() },
                                     onEnqueueGalleryVideos = { uris ->
                                         viewModel.enqueueGalleryVideos(uris)
@@ -550,6 +589,7 @@ private fun AuthenticatedAiClipperContent(
                                     onUpdatePlatform = viewModel::updateBatchPlatform,
                                     onUpdateFilter = viewModel::updateBatchFilter,
                                     onUpdateAutoExport = viewModel::updateBatchAutoExport,
+                                    onUpdateWatermark = viewModel::updateBatchWatermark,
                                     onStartBatch = viewModel::startBatchProcessing,
                                     onCancelBatch = viewModel::cancelBatchProcessing,
                                     onRetryItem = viewModel::retryBatchItem,
@@ -615,6 +655,9 @@ private fun AuthenticatedAiClipperContent(
                                     selectedProjectId = selectedProjectId,
                                     segments = activeSegments,
                                     isExporting = exportProgress is ExportProgressState.Exporting,
+                                    undoState = undoHistoryState,
+                                    onUndo = viewModel::undoGlobal,
+                                    onRedo = viewModel::redoGlobal,
                                     onSelectProject = viewModel::selectProject,
                                     onEditSegment = { segmentId ->
                                         viewModel.loadSegmentForEditor(segmentId)
@@ -623,6 +666,12 @@ private fun AuthenticatedAiClipperContent(
                                     onExportSegment = { segment ->
                                         viewModel.loadSegmentForEditor(segment.id)
                                         navController.navigate("export_settings/${segment.id}")
+                                    },
+                                    onEnqueueSegment = { segment ->
+                                        viewModel.enqueueClipForBackgroundExport(segment, autoStart = true)
+                                    },
+                                    onEnqueueAllSegments = {
+                                        viewModel.enqueueMultipleClipsForBackgroundExport(activeSegments, autoStart = true)
                                     },
                                     onToggleFavorite = viewModel::toggleSegmentFavorite,
                                     onBookmarkAllFavorites = viewModel::bookmarkTopClipsFavorite,
@@ -664,6 +713,9 @@ private fun AuthenticatedAiClipperContent(
                                 ClipEditorScreen(
                                     editorState = editorState,
                                     exportProgress = exportProgress,
+                                    undoState = undoHistoryState,
+                                    onUndo = viewModel::undoGlobal,
+                                    onRedo = viewModel::redoGlobal,
                                     onBack = { navController.popBackStack() },
                                     onUpdateTrim = viewModel::updateEditorTrim,
                                     onUpdateAspectRatio = viewModel::updateEditorAspectRatio,
@@ -672,6 +724,7 @@ private fun AuthenticatedAiClipperContent(
                                     onResetFilters = viewModel::resetEditorFilters,
                                     onToggleSubtitles = viewModel::toggleEditorSubtitles,
                                     onToggleIncludeAudio = viewModel::toggleEditorIncludeAudio,
+                                    onToggleWatermark = viewModel::toggleEditorWatermark,
                                     onToggleIntroHook = viewModel::toggleEditorIntroHook,
                                     onUpdateHookDuration = viewModel::updateEditorHookDuration,
                                     onUpdateHookStyle = viewModel::updateEditorHookStyle,
@@ -699,6 +752,9 @@ private fun AuthenticatedAiClipperContent(
                                     onOpenExportSettings = {
                                         val segId = editorState.segment?.id ?: segmentId
                                         navController.navigate("export_settings/$segId")
+                                    },
+                                    onEnqueueForBackgroundExport = {
+                                        viewModel.enqueueActiveEditorSegmentForBackgroundExport(autoStart = true)
                                     },
                                     onAttachLocalVideo = viewModel::attachLocalVideoToProject,
                                     onCancelExport = viewModel::cancelExport,
@@ -728,6 +784,9 @@ private fun AuthenticatedAiClipperContent(
                                     editorState = editorState,
                                     exportProgress = exportProgress,
                                     autoOpenShareSheet = autoOpenShareSheet,
+                                    undoState = undoHistoryState,
+                                    onUndo = viewModel::undoGlobal,
+                                    onRedo = viewModel::redoGlobal,
                                     onBack = { navController.popBackStack() },
                                     onSelectAspectRatio = viewModel::updateEditorAspectRatio,
                                     onSelectQuality = viewModel::updateEditorExportQuality,
@@ -735,8 +794,13 @@ private fun AuthenticatedAiClipperContent(
                                     onToggleIncludeAudio = viewModel::toggleEditorIncludeAudio,
                                     onToggleMusic = viewModel::toggleAutoMusicOnExportSettings,
                                     onToggleAutoOpenShareSheet = viewModel::setAutoOpenShareSheet,
+                                    onToggleWatermark = viewModel::toggleEditorWatermark,
                                     onStartExport = { seg, sourceUri ->
                                         viewModel.exportSegment(seg, sourceUri)
+                                    },
+                                    onEnqueueExport = { seg, sourceUri ->
+                                        viewModel.enqueueClipForBackgroundExport(seg, sourceUri, autoStart = true)
+                                        navController.popBackStack()
                                     },
                                     onCancelExport = viewModel::cancelExport,
                                     onExportCompleted = { clip ->

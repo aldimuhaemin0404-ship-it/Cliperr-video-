@@ -77,6 +77,7 @@ data class ClipSegmentEntity(
     val audioMoodLabel: String? = null,
     val audioBpm: Int? = null,
     val exportQualityName: String = ExportQuality.HD_1080P.name,
+    val includeWatermark: Boolean = false,
     val isFavorite: Boolean = false,
     val subtitleCuesJson: String = "",
     val isPlaceholderAi: Boolean
@@ -166,6 +167,7 @@ fun ClipSegmentEntity.toDomain(): ClipSegment = ClipSegment(
     audioBpm = audioBpm,
     exportQuality = runCatching { ExportQuality.valueOf(exportQualityName) }
         .getOrDefault(ExportQuality.HD_1080P),
+    includeWatermark = includeWatermark,
     isFavorite = isFavorite,
     subtitleCues = decodeSubtitleCues(subtitleCuesJson),
     isPlaceholderAi = isPlaceholderAi
@@ -200,6 +202,7 @@ fun ClipSegment.toEntity(): ClipSegmentEntity = ClipSegmentEntity(
     audioMoodLabel = audioMoodLabel,
     audioBpm = audioBpm,
     exportQualityName = exportQuality.name,
+    includeWatermark = includeWatermark,
     isFavorite = isFavorite,
     subtitleCuesJson = encodeSubtitleCues(subtitleCues),
     isPlaceholderAi = isPlaceholderAi

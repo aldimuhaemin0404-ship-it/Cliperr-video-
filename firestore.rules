@@ -176,6 +176,7 @@ service cloud.firestore {
              (!('audioMoodLabel' in data) || (data.audioMoodLabel is string && data.audioMoodLabel.size() <= 80)) &&
              (!('audioBpm' in data) || (data.audioBpm is int && data.audioBpm >= 30 && data.audioBpm <= 300)) &&
              isValidQuality(data.exportQuality) &&
+             (!('includeWatermark' in data) || data.includeWatermark is bool) &&
              data.favorite is bool &&
              data.placeholderAi is bool &&
              isValidTimestamp(data.createdAt) &&
@@ -293,7 +294,7 @@ service cloud.firestore {
                            'transitionDurationMs', 'includeAudio',
                            'selectedMusicTrackId', 'selectedMusicTitle', 'selectedMusicUrl',
                            'musicVolume', 'audioMoodLabel', 'audioBpm',
-                           'exportQuality', 'favorite', 'placeholderAi', 'createdAt', 'updatedAt'
+                           'exportQuality', 'includeWatermark', 'favorite', 'placeholderAi', 'createdAt', 'updatedAt'
                          ]) &&
                          isValidCloudClipSegment(incoming(), userId) &&
                          existsAfter(/databases/$(database)/documents/users/$(userId)/projects/$(incoming().projectCloudId));
@@ -315,7 +316,7 @@ service cloud.firestore {
                            'transitionDurationMs', 'includeAudio',
                            'selectedMusicTrackId', 'selectedMusicTitle', 'selectedMusicUrl',
                            'musicVolume', 'audioMoodLabel', 'audioBpm',
-                           'exportQuality', 'favorite', 'placeholderAi', 'updatedAt'
+                           'exportQuality', 'includeWatermark', 'favorite', 'placeholderAi', 'updatedAt'
                          ]);
 
         allow delete: if isValidId(userId) && isValidId(segmentId) && isOwner(userId);

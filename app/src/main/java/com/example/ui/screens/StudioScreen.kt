@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -97,12 +98,14 @@ import com.example.domain.model.PopularVideoItem
 import com.example.domain.model.SocialSourcePlatform
 import com.example.domain.model.StudioImportSource
 import com.example.domain.model.TargetPlatform
+import com.example.domain.model.UndoHistoryUiState
 import com.example.domain.model.VideoFilterPreset
 import com.example.domain.model.VideoMetadata
 import com.example.ui.components.AiDemoNoticeBanner
 import com.example.ui.components.AiRobotMascot
 import com.example.ui.components.AldiLogoClapperboard
 import com.example.ui.components.ClipTimestampRangeSelector
+import com.example.ui.components.GlobalUndoRedoControls
 import com.example.ui.components.MainVideoPlayer
 import com.example.ui.components.SocialLinkPreviewCard
 import com.example.ui.components.VideoFilterControlsCard
@@ -130,6 +133,11 @@ fun StudioScreen(
     isExporting: Boolean,
     batchQueueCount: Int,
     isBatchRunning: Boolean,
+    exportRenderQueueCount: Int = 0,
+    isRenderQueueRunning: Boolean = false,
+    undoState: UndoHistoryUiState = UndoHistoryUiState(),
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
     onImportSourceChanged: (StudioImportSource) -> Unit,
     onLinkInputChanged: (String) -> Unit,
     onResolveSocialLink: () -> Unit,
@@ -143,8 +151,10 @@ fun StudioScreen(
     onResetFilters: () -> Unit,
     onSuggestTimestamps: () -> Unit,
     onExportManualClip: () -> Unit,
+    onEnqueueManualClip: () -> Unit = {},
     onPlatformSelected: (TargetPlatform) -> Unit,
     onFocusTopicChanged: (String) -> Unit,
+    onWatermarkChanged: (Boolean) -> Unit = {},
     onAnalyzeClick: () -> Unit,
     onSelectPopularVideo: (PopularVideoItem) -> Unit,
     onSeeAllPopular: () -> Unit,
@@ -203,7 +213,12 @@ fun StudioScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                HomeTopHeader(onOpenWebStudio = onOpenWebStudio)
+                HomeTopHeader(
+                    undoState = undoState,
+                    onUndo = onUndo,
+                    onRedo = onRedo,
+                    onOpenWebStudio = onOpenWebStudio
+                )
             }
 
             if (userDisplayName != null) {
@@ -249,8 +264,8 @@ fun StudioScreen(
 
             item {
                 BatchQueueHomeCard(
-                    queueCount = batchQueueCount,
-                    isBatchRunning = isBatchRunning,
+                    queueCount = batchQueueCount + exportRenderQueueCount,
+                    isBatchRunning = isBatchRunning || isRenderQueueRunning,
                     onPickMultiple = launchMultiPhotoPicker,
                     onOpenQueue = onOpenBatchQueue
                 )
@@ -277,15 +292,27 @@ fun StudioScreen(
                 item {
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary)
+                        color = CosmicSurfaceElevated,
+                        border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.65f)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = studioState.errorMessage,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = FuturisticCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = studioState.errorMessage,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.92f)
+                            )
+                        }
                     }
                 }
             }
@@ -306,7 +333,11 @@ fun StudioScreen(
                             isExporting = isExporting,
                             selectedPlatform = studioState.selectedPlatform,
                             focusTopic = studioState.focusTopic,
+                            includeWatermark = studioState.includeWatermark,
                             isAnalyzing = studioState.isAnalyzing,
+                            undoState = undoState,
+                            onUndo = onUndo,
+                            onRedo = onRedo,
                             onAttachLocalVideo = launchPhotoPicker,
                             onTrimChanged = onStudioTrimChanged,
                             onFilterSelected = onFilterSelected,
@@ -314,8 +345,10 @@ fun StudioScreen(
                             onResetFilters = onResetFilters,
                             onSuggestTimestamps = onSuggestTimestamps,
                             onExportManualClip = onExportManualClip,
+                            onEnqueueManualClip = onEnqueueManualClip,
                             onPlatformSelected = onPlatformSelected,
                             onFocusTopicChanged = onFocusTopicChanged,
+                            onWatermarkChanged = onWatermarkChanged,
                             onAnalyzeClick = onAnalyzeClick
                         )
                     }
@@ -381,6 +414,9 @@ fun StudioScreen(
 
 @Composable
 private fun HomeTopHeader(
+    undoState: UndoHistoryUiState,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
     onOpenWebStudio: () -> Unit
 ) {
     Row(
@@ -390,7 +426,8 @@ private fun HomeTopHeader(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.weight(1f)
         ) {
             AldiLogoClapperboard(modifier = Modifier.size(38.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -409,32 +446,46 @@ private fun HomeTopHeader(
             }
         }
 
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = NeonPurple.copy(alpha = 0.18f),
-            border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.65f)),
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .clickable(onClick = onOpenWebStudio)
-                .minimumInteractiveComponentSize()
-                .testTag("open_web_studio_button")
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            if (undoState.canUndo || undoState.canRedo) {
+                GlobalUndoRedoControls(
+                    undoState = undoState,
+                    onUndo = onUndo,
+                    onRedo = onRedo,
+                    showActionLabel = false
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = NeonPurple.copy(alpha = 0.18f),
+                border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.65f)),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable(onClick = onOpenWebStudio)
+                    .minimumInteractiveComponentSize()
+                    .testTag("open_web_studio_button")
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Public,
-                    contentDescription = stringResource(R.string.home_open_web_studio),
-                    tint = FuturisticCyan,
-                    modifier = Modifier.size(15.dp)
-                )
-                Text(
-                    text = stringResource(R.string.home_open_web_studio),
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Public,
+                        contentDescription = stringResource(R.string.home_open_web_studio),
+                        tint = FuturisticCyan,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.home_open_web_studio),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
             }
         }
     }
@@ -452,7 +503,7 @@ private fun CloudAccountStatusBar(
         border = BorderStroke(
             1.dp,
             when (cloudSyncState) {
-                is CloudSyncUiState.Error -> MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                is CloudSyncUiState.Error -> StudioAmber.copy(alpha = 0.6f)
                 else -> CosmicOutline.copy(alpha = 0.75f)
             }
         ),
@@ -502,8 +553,8 @@ private fun CloudAccountStatusBar(
                                 "${stringResource(R.string.cloud_sync_active)} • ${cloudSyncState.cloudProjectsCount} proyek"
                             )
                             is CloudSyncUiState.Error -> Triple(
-                                Icons.Filled.CloudOff,
-                                MaterialTheme.colorScheme.error,
+                                Icons.Filled.CloudSync,
+                                StudioAmber,
                                 cloudSyncState.message
                             )
                         }
@@ -605,7 +656,7 @@ private fun StudioHeroCard(
                             border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.55f))
                         ) {
                             Text(
-                                text = "ANTI-BUFF",
+                                text = "AI ULTRA",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
                                 color = Color(0xFF6EE7B7),
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1310,7 +1361,11 @@ private fun SelectedVideoWorkspaceCard(
     isExporting: Boolean,
     selectedPlatform: TargetPlatform,
     focusTopic: String,
+    includeWatermark: Boolean,
     isAnalyzing: Boolean,
+    undoState: UndoHistoryUiState,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
     onAttachLocalVideo: () -> Unit,
     onTrimChanged: (Long, Long) -> Unit,
     onFilterSelected: (VideoFilterPreset) -> Unit,
@@ -1318,8 +1373,10 @@ private fun SelectedVideoWorkspaceCard(
     onResetFilters: () -> Unit,
     onSuggestTimestamps: () -> Unit,
     onExportManualClip: () -> Unit,
+    onEnqueueManualClip: () -> Unit,
     onPlatformSelected: (TargetPlatform) -> Unit,
     onFocusTopicChanged: (String) -> Unit,
+    onWatermarkChanged: (Boolean) -> Unit,
     onAnalyzeClick: () -> Unit
 ) {
     var playheadPositionMs by remember(video.uriString) { mutableLongStateOf(0L) }
@@ -1429,6 +1486,41 @@ private fun SelectedVideoWorkspaceCard(
                     onResetFilters = onResetFilters
                 )
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    GlobalUndoRedoControls(
+                        undoState = undoState,
+                        onUndo = onUndo,
+                        onRedo = onRedo,
+                        showActionLabel = true
+                    )
+
+                    OutlinedButton(
+                        onClick = onEnqueueManualClip,
+                        border = BorderStroke(1.dp, NeonPurple.copy(alpha = 0.7f)),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("studio_enqueue_manual_clip_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.QueuePlayNext,
+                            contentDescription = null,
+                            tint = FuturisticCyan,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "Antrekan Klip",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = FuturisticCyan
+                        )
+                    }
+                }
+
                 OutlinedButton(
                     onClick = onSuggestTimestamps,
                     enabled = !isSuggestingTimestamps,
@@ -1500,7 +1592,8 @@ private fun SelectedVideoWorkspaceCard(
                     authorName = video.authorName,
                     thumbnailUrl = video.thumbnailUrl,
                     statusNote = video.streamStatusNote,
-                    onAttachLocalVideo = onAttachLocalVideo
+                    onAttachLocalVideo = onAttachLocalVideo,
+                    originalUrl = video.originalShareUrl ?: video.uriString
                 )
             }
 
@@ -1528,6 +1621,44 @@ private fun SelectedVideoWorkspaceCard(
                             modifier = Modifier.minimumInteractiveComponentSize()
                         )
                     }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(R.string.watermark_section_title),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = !includeWatermark,
+                        onClick = { onWatermarkChanged(false) },
+                        label = { Text(stringResource(R.string.watermark_none_label)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = FuturisticCyan.copy(alpha = 0.22f),
+                            selectedLabelColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .minimumInteractiveComponentSize()
+                            .testTag("studio_watermark_none_chip")
+                    )
+                    FilterChip(
+                        selected = includeWatermark,
+                        onClick = { onWatermarkChanged(true) },
+                        label = { Text(stringResource(R.string.watermark_brand_label)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = NeonPurple.copy(alpha = 0.25f),
+                            selectedLabelColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .minimumInteractiveComponentSize()
+                            .testTag("studio_watermark_brand_chip")
+                    )
                 }
             }
 

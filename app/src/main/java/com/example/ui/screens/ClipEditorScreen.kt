@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.Button
@@ -96,12 +97,14 @@ import com.example.domain.model.ClipSegment
 import com.example.domain.model.ExportProgressState
 import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.MusicTrackRecommendation
+import com.example.domain.model.UndoHistoryUiState
 import com.example.domain.model.VideoFilterPreset
 import com.example.domain.model.VideoTransitionStyle
 import com.example.media.MediaPlaybackCache
 import com.example.ui.components.AiDemoNoticeBanner
 import com.example.ui.components.ExportProgressBanner
 import com.example.ui.components.FilmstripTimelineBar
+import com.example.ui.components.GlobalUndoRedoControls
 import com.example.ui.components.SocialLinkPreviewCard
 import com.example.ui.components.VideoClipPlayerPreview
 import com.example.ui.components.VideoFilterControlsCard
@@ -134,6 +137,9 @@ private enum class EditorTool(val label: String) {
 fun ClipEditorScreen(
     editorState: EditorUiState,
     exportProgress: ExportProgressState,
+    undoState: UndoHistoryUiState = UndoHistoryUiState(),
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
     onBack: () -> Unit,
     onUpdateTrim: (Long, Long) -> Unit,
     onUpdateAspectRatio: (AspectRatioPreset) -> Unit,
@@ -142,6 +148,7 @@ fun ClipEditorScreen(
     onResetFilters: () -> Unit,
     onToggleSubtitles: (Boolean) -> Unit,
     onToggleIncludeAudio: (Boolean) -> Unit,
+    onToggleWatermark: (Boolean) -> Unit = {},
     onToggleIntroHook: (Boolean) -> Unit,
     onUpdateHookDuration: (Long) -> Unit,
     onUpdateHookStyle: (HookOverlayStyle) -> Unit,
@@ -162,6 +169,7 @@ fun ClipEditorScreen(
     onUpdateSubtitleCue: (Int, String) -> Unit,
     onSaveChanges: () -> Unit,
     onOpenExportSettings: () -> Unit,
+    onEnqueueForBackgroundExport: () -> Unit = {},
     onAttachLocalVideo: (Long, Uri) -> Unit,
     onCancelExport: () -> Unit,
     onDismissExportBanner: () -> Unit,
@@ -250,6 +258,12 @@ fun ClipEditorScreen(
                     }
                 },
                 actions = {
+                    GlobalUndoRedoControls(
+                        undoState = undoState,
+                        onUndo = onUndo,
+                        onRedo = onRedo,
+                        showActionLabel = false
+                    )
                     IconButton(
                         onClick = onSaveChanges,
                         modifier = Modifier
@@ -311,7 +325,8 @@ fun ClipEditorScreen(
                                 hookOverlayStyle = segment.hookOverlayStyle,
                                 transitionStyle = segment.transitionStyle,
                                 transitionDurationMs = segment.transitionDurationMs,
-                                selectedMusicTitle = segment.selectedMusicTitle
+                                selectedMusicTitle = segment.selectedMusicTitle,
+                                includeWatermark = segment.includeWatermark
                             )
                         } else {
                             SocialLinkPreviewCard(
@@ -319,12 +334,13 @@ fun ClipEditorScreen(
                                 platformName = project.sourcePlatformName ?: "Sosial Media",
                                 authorName = project.authorName,
                                 thumbnailUrl = project.thumbnailUrl,
-                                statusNote = "Untuk merender MP4 di perangkat, tautkan file video lokal atau gunakan URL stream langsung (.mp4/.m3u8).",
+                                statusNote = "Untuk merender MP4 di perangkat, buka tautan asli atau tautkan file video lokal / URL stream langsung (.mp4/.m3u8).",
                                 onAttachLocalVideo = {
                                     localVideoLauncher.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                                     )
-                                }
+                                },
+                                originalUrl = project.sourceUri
                             )
                         }
                     }
@@ -380,7 +396,8 @@ fun ClipEditorScreen(
                                     segment = segment,
                                     onUpdateAspectRatio = onUpdateAspectRatio,
                                     onToggleIncludeAudio = onToggleIncludeAudio,
-                                    onToggleSubtitles = onToggleSubtitles
+                                    onToggleSubtitles = onToggleSubtitles,
+                                    onToggleWatermark = onToggleWatermark
                                 )
                             }
                         }
@@ -428,43 +445,76 @@ fun ClipEditorScreen(
                         }
                     }
 
-                    // Bottom primary purple gradient CTA -> Pengaturan Ekspor HD
+                    // Bottom primary purple gradient CTA -> Pengaturan Ekspor HD + Queue background export
                     item {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 16.dp)
-                                .height(54.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable {
-                                    onSaveChanges()
-                                    onOpenExportSettings()
-                                }
-                                .testTag("editor_save_video_button")
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Box(
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(ActionButtonGradient),
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .height(54.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        onSaveChanges()
+                                        onOpenExportSettings()
+                                    }
+                                    .testTag("editor_save_video_button")
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(ActionButtonGradient),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Download,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.editor_save_video_cta),
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = Color.White
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Download,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.editor_save_video_cta),
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = Color.White
+                                        )
+                                    }
                                 }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    onSaveChanges()
+                                    onEnqueueForBackgroundExport()
+                                },
+                                enabled = project.hasPlayableStream,
+                                border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("editor_enqueue_export_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.QueuePlayNext,
+                                    contentDescription = null,
+                                    tint = FuturisticCyan,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.export_queue_enqueue_cta),
+                                    color = FuturisticCyan,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                                )
                             }
                         }
                     }
@@ -700,7 +750,8 @@ private fun EditorRatioAudioCard(
     segment: ClipSegment,
     onUpdateAspectRatio: (AspectRatioPreset) -> Unit,
     onToggleIncludeAudio: (Boolean) -> Unit,
-    onToggleSubtitles: (Boolean) -> Unit
+    onToggleSubtitles: (Boolean) -> Unit,
+    onToggleWatermark: (Boolean) -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(18.dp),
@@ -788,6 +839,34 @@ private fun EditorRatioAudioCard(
                         checkedTrackColor = NeonPurple
                     ),
                     modifier = Modifier.testTag("toggle_captions_switch")
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.watermark_section_title),
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = !segment.includeWatermark,
+                    onClick = { onToggleWatermark(false) },
+                    label = { Text(stringResource(R.string.watermark_none_label)) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .minimumInteractiveComponentSize()
+                        .testTag("editor_watermark_none_chip")
+                )
+                FilterChip(
+                    selected = segment.includeWatermark,
+                    onClick = { onToggleWatermark(true) },
+                    label = { Text(stringResource(R.string.watermark_brand_label)) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .minimumInteractiveComponentSize()
+                        .testTag("editor_watermark_brand_chip")
                 )
             }
         }

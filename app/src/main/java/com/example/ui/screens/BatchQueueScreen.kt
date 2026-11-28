@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
@@ -70,8 +69,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +88,8 @@ import com.example.R
 import com.example.domain.model.BatchItemStatus
 import com.example.domain.model.BatchQueueConfig
 import com.example.domain.model.BatchQueueItem
+import com.example.domain.model.ExportJobStatus
+import com.example.domain.model.ExportRenderJob
 import com.example.domain.model.TargetPlatform
 import com.example.domain.model.VideoFilterPreset
 import com.example.ui.components.AiDemoNoticeBanner
@@ -109,12 +112,20 @@ fun BatchQueueScreen(
     queueItems: List<BatchQueueItem>,
     config: BatchQueueConfig,
     isBatchRunning: Boolean,
+    exportRenderJobs: List<ExportRenderJob> = emptyList(),
+    isRenderQueueRunning: Boolean = false,
+    onCancelExportJob: (String) -> Unit = {},
+    onRetryExportJob: (String) -> Unit = {},
+    onRemoveExportJob: (String) -> Unit = {},
+    onClearCompletedExports: () -> Unit = {},
+    onOpenExportsGallery: () -> Unit = {},
     onBack: () -> Unit,
     onEnqueueGalleryVideos: (List<Uri>) -> Unit,
     onEnqueueSocialLinks: (String) -> Unit,
     onUpdatePlatform: (TargetPlatform) -> Unit,
     onUpdateFilter: (VideoFilterPreset) -> Unit,
     onUpdateAutoExport: (Boolean) -> Unit,
+    onUpdateWatermark: (Boolean) -> Unit = {},
     onStartBatch: () -> Unit,
     onCancelBatch: () -> Unit,
     onRetryItem: (String) -> Unit,
@@ -126,6 +137,9 @@ fun BatchQueueScreen(
 ) {
     BackHandler(onBack = onBack)
 
+    var selectedTab by rememberSaveable {
+        mutableIntStateOf(if (exportRenderJobs.isEmpty() && queueItems.isNotEmpty()) 1 else 0)
+    }
     var showLinksInput by remember { mutableStateOf(false) }
     var multiLinksText by remember { mutableStateOf("") }
 
@@ -134,6 +148,7 @@ fun BatchQueueScreen(
         onResult = { uris ->
             if (uris.isNotEmpty()) {
                 onEnqueueGalleryVideos(uris)
+                selectedTab = 1
             }
         }
     )
@@ -150,6 +165,20 @@ fun BatchQueueScreen(
     val overallProgress = remember(queueItems) {
         if (queueItems.isEmpty()) 0f
         else queueItems.sumOf { it.progressPercent }.toFloat() / (queueItems.size * 100f)
+    }
+
+    val renderCompletedCount = remember(exportRenderJobs) {
+        exportRenderJobs.count { it.status == ExportJobStatus.COMPLETED }
+    }
+    val renderPendingCount = remember(exportRenderJobs) {
+        exportRenderJobs.count { it.status == ExportJobStatus.QUEUED || it.status == ExportJobStatus.RENDERING }
+    }
+    val renderFailedCount = remember(exportRenderJobs) {
+        exportRenderJobs.count { it.status == ExportJobStatus.FAILED || it.status == ExportJobStatus.CANCELLED }
+    }
+    val renderOverallProgress = remember(exportRenderJobs) {
+        if (exportRenderJobs.isEmpty()) 0f
+        else exportRenderJobs.sumOf { it.progressPercent }.toFloat() / (exportRenderJobs.size * 100f)
     }
 
     Scaffold(
@@ -181,16 +210,23 @@ fun BatchQueueScreen(
                     }
                 },
                 actions = {
-                    if (completedCount > 0) {
+                    val canClear = if (selectedTab == 0) renderCompletedCount > 0 else completedCount > 0
+                    if (canClear) {
                         IconButton(
-                            onClick = onClearCompleted,
+                            onClick = {
+                                if (selectedTab == 0) onClearCompletedExports() else onClearCompleted()
+                            },
                             modifier = Modifier
                                 .minimumInteractiveComponentSize()
                                 .testTag("batch_clear_completed_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.DeleteSweep,
-                                contentDescription = stringResource(R.string.batch_queue_clear_done),
+                                contentDescription = if (selectedTab == 0) {
+                                    stringResource(R.string.export_queue_clear_done)
+                                } else {
+                                    stringResource(R.string.batch_queue_clear_done)
+                                },
                                 tint = FuturisticCyan
                             )
                         }
@@ -215,62 +251,144 @@ fun BatchQueueScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Summary & Upload Controls Card
                 item {
-                    BatchQueueControlsCard(
-                        totalCount = queueItems.size,
-                        completedCount = completedCount,
-                        pendingCount = pendingCount,
-                        failedCount = failedCount,
-                        overallProgress = overallProgress,
-                        isBatchRunning = isBatchRunning,
-                        showLinksInput = showLinksInput,
-                        multiLinksText = multiLinksText,
-                        config = config,
-                        onPickMultipleVideos = {
-                            multiVideoPicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                            )
-                        },
-                        onToggleLinksInput = { showLinksInput = !showLinksInput },
-                        onLinksTextChanged = { multiLinksText = it },
-                        onSubmitLinks = {
-                            onEnqueueSocialLinks(multiLinksText)
-                            multiLinksText = ""
-                            showLinksInput = false
-                        },
-                        onUpdatePlatform = onUpdatePlatform,
-                        onUpdateFilter = onUpdateFilter,
-                        onUpdateAutoExport = onUpdateAutoExport,
-                        onStartBatch = onStartBatch,
-                        onCancelBatch = onCancelBatch
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            label = {
+                                Text(
+                                    text = "${stringResource(R.string.export_queue_tab_render)} (${exportRenderJobs.size})",
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = NeonPurple.copy(alpha = 0.28f),
+                                selectedLabelColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .minimumInteractiveComponentSize()
+                                .testTag("queue_tab_render")
+                        )
+                        FilterChip(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            label = {
+                                Text(
+                                    text = "${stringResource(R.string.export_queue_tab_ai)} (${queueItems.size})",
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = FuturisticCyan.copy(alpha = 0.24f),
+                                selectedLabelColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .minimumInteractiveComponentSize()
+                                .testTag("queue_tab_ai")
+                        )
+                    }
                 }
 
-                item {
-                    AiDemoNoticeBanner(compact = true)
-                }
-
-                if (queueItems.isEmpty()) {
+                if (selectedTab == 0) {
                     item {
-                        EmptyBatchQueueCard(
+                        ExportRenderSummaryCard(
+                            totalCount = exportRenderJobs.size,
+                            completedCount = renderCompletedCount,
+                            pendingCount = renderPendingCount,
+                            failedCount = renderFailedCount,
+                            overallProgress = renderOverallProgress,
+                            isRenderQueueRunning = isRenderQueueRunning,
+                            onClearCompleted = onClearCompletedExports,
+                            onOpenExportsGallery = onOpenExportsGallery
+                        )
+                    }
+
+                    if (exportRenderJobs.isEmpty()) {
+                        item {
+                            EmptyExportRenderQueueCard(onBack = onBack)
+                        }
+                    } else {
+                        itemsIndexed(exportRenderJobs, key = { _, job -> job.id }) { index, job ->
+                            ExportRenderJobCard(
+                                index = index + 1,
+                                job = job,
+                                onCancel = { onCancelExportJob(job.id) },
+                                onRetry = { onRetryExportJob(job.id) },
+                                onRemove = { onRemoveExportJob(job.id) },
+                                onOpenExportsGallery = onOpenExportsGallery,
+                                onShareExport = { exportId -> onShareExportedClip(exportId) }
+                            )
+                        }
+                    }
+                } else {
+                    // Summary & Upload Controls Card
+                    item {
+                        BatchQueueControlsCard(
+                            totalCount = queueItems.size,
+                            completedCount = completedCount,
+                            pendingCount = pendingCount,
+                            failedCount = failedCount,
+                            overallProgress = overallProgress,
+                            isBatchRunning = isBatchRunning,
+                            showLinksInput = showLinksInput,
+                            multiLinksText = multiLinksText,
+                            config = config,
                             onPickMultipleVideos = {
                                 multiVideoPicker.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                                 )
-                            }
+                            },
+                            onToggleLinksInput = { showLinksInput = !showLinksInput },
+                            onLinksTextChanged = { multiLinksText = it },
+                            onSubmitLinks = {
+                                onEnqueueSocialLinks(multiLinksText)
+                                multiLinksText = ""
+                                showLinksInput = false
+                            },
+                            onUpdatePlatform = onUpdatePlatform,
+                            onUpdateFilter = onUpdateFilter,
+                            onUpdateAutoExport = onUpdateAutoExport,
+                            onUpdateWatermark = onUpdateWatermark,
+                            onStartBatch = onStartBatch,
+                            onCancelBatch = onCancelBatch
                         )
                     }
-                } else {
-                    itemsIndexed(queueItems, key = { _, item -> item.id }) { index, item ->
-                        BatchQueueItemCard(
-                            index = index + 1,
-                            item = item,
-                            onRetry = { onRetryItem(item.id) },
-                            onRemove = { onRemoveItem(item.id) },
-                            onOpenProject = { projectId -> onOpenProject(projectId) },
-                            onShareExport = { exportId -> onShareExportedClip(exportId) }
-                        )
+
+                    item {
+                        AiDemoNoticeBanner(compact = true)
+                    }
+
+                    if (queueItems.isEmpty()) {
+                        item {
+                            EmptyBatchQueueCard(
+                                onPickMultipleVideos = {
+                                    multiVideoPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                    )
+                                }
+                            )
+                        }
+                    } else {
+                        itemsIndexed(queueItems, key = { _, item -> item.id }) { index, item ->
+                            BatchQueueItemCard(
+                                index = index + 1,
+                                item = item,
+                                onRetry = { onRetryItem(item.id) },
+                                onRemove = { onRemoveItem(item.id) },
+                                onOpenProject = { projectId -> onOpenProject(projectId) },
+                                onShareExport = { exportId -> onShareExportedClip(exportId) }
+                            )
+                        }
                     }
                 }
             }
@@ -296,6 +414,7 @@ private fun BatchQueueControlsCard(
     onUpdatePlatform: (TargetPlatform) -> Unit,
     onUpdateFilter: (VideoFilterPreset) -> Unit,
     onUpdateAutoExport: (Boolean) -> Unit,
+    onUpdateWatermark: (Boolean) -> Unit,
     onStartBatch: () -> Unit,
     onCancelBatch: () -> Unit
 ) {
@@ -364,7 +483,7 @@ private fun BatchQueueControlsCard(
                     QueueStatChip("Selesai: $completedCount", StudioEmerald)
                     QueueStatChip("Menunggu: $pendingCount", StudioAmber)
                     if (failedCount > 0) {
-                        QueueStatChip("Gagal: $failedCount", NeonMagenta)
+                        QueueStatChip("Perlu Ulang: $failedCount", StudioAmber)
                     }
                 }
             }
@@ -517,6 +636,38 @@ private fun BatchQueueControlsCard(
                         modifier = Modifier.minimumInteractiveComponentSize()
                     )
                 }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = !config.includeWatermark,
+                    onClick = { onUpdateWatermark(false) },
+                    label = { Text(stringResource(R.string.watermark_none_label)) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = FuturisticCyan.copy(alpha = 0.22f),
+                        selectedLabelColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .minimumInteractiveComponentSize()
+                        .testTag("batch_watermark_none_chip")
+                )
+                FilterChip(
+                    selected = config.includeWatermark,
+                    onClick = { onUpdateWatermark(true) },
+                    label = { Text(stringResource(R.string.watermark_brand_label)) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = NeonPurple.copy(alpha = 0.28f),
+                        selectedLabelColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .minimumInteractiveComponentSize()
+                        .testTag("batch_watermark_brand_chip")
+                )
             }
 
             Row(
@@ -693,9 +844,9 @@ private fun BatchQueueItemCard(
                             modifier = Modifier.size(20.dp)
                         )
                         BatchItemStatus.FAILED -> Icon(
-                            imageVector = Icons.Filled.ErrorOutline,
+                            imageVector = Icons.Filled.Refresh,
                             contentDescription = item.status.label,
-                            tint = statusColor,
+                            tint = StudioAmber,
                             modifier = Modifier.size(20.dp)
                         )
                         else -> Text(
@@ -715,8 +866,9 @@ private fun BatchQueueItemCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     val durSuffix = if (item.durationMs > 0L) " • ${formatDurationShort(item.durationMs)}" else ""
+                    val wmSuffix = if (item.includeWatermark) " • Watermark" else " • Tanpa Watermark"
                     Text(
-                        text = "${item.targetPlatform.displayName} • Filter ${item.videoFilter.label}$durSuffix",
+                        text = "${item.targetPlatform.displayName} • Filter ${item.videoFilter.label}$wmSuffix$durSuffix",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -764,7 +916,7 @@ private fun BatchQueueItemCard(
                     Text(
                         text = item.errorMessage ?: item.stageDetail,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (item.status == BatchItemStatus.FAILED) NeonMagenta else Color.White.copy(alpha = 0.84f),
+                        color = if (item.status == BatchItemStatus.FAILED) StudioAmber else Color.White.copy(alpha = 0.84f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
@@ -917,6 +1069,431 @@ private fun EmptyBatchQueueCard(
             ) {
                 Text(
                     text = stringResource(R.string.batch_queue_pick_multiple),
+                    color = FuturisticCyan,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExportRenderSummaryCard(
+    totalCount: Int,
+    completedCount: Int,
+    pendingCount: Int,
+    failedCount: Int,
+    overallProgress: Float,
+    isRenderQueueRunning: Boolean,
+    onClearCompleted: () -> Unit,
+    onOpenExportsGallery: () -> Unit
+) {
+    val animatedOverall by animateFloatAsState(
+        targetValue = overallProgress.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 280),
+        label = "renderOverallProgress"
+    )
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+        border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.55f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${stringResource(R.string.export_queue_banner_title)} ($totalCount Klip)",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (isRenderQueueRunning) {
+                            "Merender berurutan di latar belakang… Anda bebas mengedit klip lain."
+                        } else if (pendingCount > 0) {
+                            "$pendingCount klip siap diproses berurutan."
+                        } else {
+                            "Antrekan ekspor dari Editor, Ekspor HD, atau Proyek."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = "${(animatedOverall * 100).toInt()}%",
+                    style = MonoTimecodeStyle,
+                    color = FuturisticCyan
+                )
+            }
+
+            if (totalCount > 0) {
+                LinearProgressIndicator(
+                    progress = { animatedOverall },
+                    color = FuturisticCyan,
+                    trackColor = CosmicSurfaceElevated,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .testTag("export_queue_overall_progress")
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QueueStatChip("Selesai: $completedCount", StudioEmerald)
+                    QueueStatChip("Menunggu/Render: $pendingCount", StudioAmber)
+                    if (failedCount > 0) {
+                        QueueStatChip("Perlu Ulang: $failedCount", StudioAmber)
+                    }
+                }
+            }
+
+            if (completedCount > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onClearCompleted,
+                        border = BorderStroke(1.dp, CosmicOutline),
+                        modifier = Modifier
+                            .weight(1f)
+                            .minimumInteractiveComponentSize()
+                            .testTag("export_queue_clear_done_button")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.export_queue_clear_done),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Button(
+                        onClick = onOpenExportsGallery,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NeonPurple,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .minimumInteractiveComponentSize()
+                            .testTag("export_queue_open_gallery_button")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.export_queue_open_exports),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExportRenderJobCard(
+    index: Int,
+    job: ExportRenderJob,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+    onRemove: () -> Unit,
+    onOpenExportsGallery: () -> Unit,
+    onShareExport: (Long) -> Unit
+) {
+    val statusColor = when (job.status) {
+        ExportJobStatus.QUEUED -> StudioAmber
+        ExportJobStatus.RENDERING -> FuturisticCyan
+        ExportJobStatus.COMPLETED -> StudioEmerald
+        ExportJobStatus.FAILED,
+        ExportJobStatus.CANCELLED -> NeonMagenta
+    }
+    val animatedProgress by animateFloatAsState(
+        targetValue = (job.progressPercent / 100f).coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 250),
+        label = "exportJob_${job.id}"
+    )
+
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+        border = BorderStroke(
+            width = if (job.isActive) 1.5.dp else 1.dp,
+            color = if (job.isActive) statusColor else CosmicOutline
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("export_job_card_${job.id}")
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(statusColor.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    when (job.status) {
+                        ExportJobStatus.COMPLETED -> Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = job.status.label,
+                            tint = statusColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        ExportJobStatus.FAILED,
+                        ExportJobStatus.CANCELLED -> Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = job.status.label,
+                            tint = StudioAmber,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        else -> Text(
+                            text = "#$index",
+                            style = MonoTimecodeStyle,
+                            color = statusColor
+                        )
+                    }
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = job.segmentSnapshot.title,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${job.projectTitle} • ${job.segmentSnapshot.aspectRatio.label} • ${job.segmentSnapshot.exportQuality.label} • ${job.segmentSnapshot.videoFilter.label}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = statusColor.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.55f))
+                ) {
+                    Text(
+                        text = job.status.label,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = statusColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+
+                if (!job.isPendingOrActive) {
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("export_job_remove_${job.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Hapus tugas ekspor",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = job.errorMessage ?: job.stageDetail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (job.status == ExportJobStatus.FAILED) StudioAmber else Color.White.copy(alpha = 0.84f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    )
+                    Text(
+                        text = "${job.progressPercent}%",
+                        style = MonoTimecodeStyle,
+                        color = statusColor
+                    )
+                }
+
+                LinearProgressIndicator(
+                    progress = { animatedProgress },
+                    color = statusColor,
+                    trackColor = CosmicSurfaceElevated,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(7.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                )
+            }
+
+            if (job.isPendingOrActive) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        border = BorderStroke(1.dp, NeonMagenta.copy(alpha = 0.75f)),
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("export_job_cancel_${job.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Stop,
+                            contentDescription = null,
+                            tint = NeonMagenta,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.editor_cancel_export),
+                            color = NeonMagenta
+                        )
+                    }
+                }
+            } else if (job.status == ExportJobStatus.COMPLETED) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onOpenExportsGallery,
+                        border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .minimumInteractiveComponentSize()
+                    ) {
+                        Text(
+                            text = stringResource(R.string.export_queue_open_exports),
+                            color = FuturisticCyan
+                        )
+                    }
+                    val exportedId = job.exportedClip?.id
+                    if (exportedId != null && exportedId > 0L) {
+                        Button(
+                            onClick = { onShareExport(exportedId) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = NeonPurple,
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .minimumInteractiveComponentSize()
+                                .testTag("export_job_share_${job.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.exports_share))
+                        }
+                    }
+                }
+            } else if (job.status == ExportJobStatus.FAILED || job.status == ExportJobStatus.CANCELLED) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    OutlinedButton(
+                        onClick = onRetry,
+                        border = BorderStroke(1.dp, StudioAmber),
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("export_job_retry_${job.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = null,
+                            tint = StudioAmber,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.batch_queue_retry),
+                            color = StudioAmber
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyExportRenderQueueCard(onBack: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = CosmicSurface),
+        border = BorderStroke(1.dp, CosmicOutline)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = FuturisticCyan.copy(alpha = 0.16f),
+                modifier = Modifier.size(64.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.QueuePlayNext,
+                        contentDescription = null,
+                        tint = FuturisticCyan,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.export_queue_empty_title),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = stringResource(R.string.export_queue_empty_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            TextButton(
+                onClick = onBack,
+                modifier = Modifier.minimumInteractiveComponentSize()
+            ) {
+                Text(
+                    text = "Kembali Mengedit",
                     color = FuturisticCyan,
                     fontWeight = FontWeight.Bold
                 )

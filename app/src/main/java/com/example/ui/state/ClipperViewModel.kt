@@ -15,6 +15,7 @@ import com.example.data.firebase.FirestoreClipRepository
 import com.example.data.local.AppDatabase
 import com.example.data.local.ClipProjectRepository
 import com.example.data.network.SocialLinkResolver
+import com.example.data.network.UrlSecurityValidator
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -26,18 +27,25 @@ import com.example.domain.model.BatchQueueItem
 import com.example.domain.model.CaptionTone
 import com.example.domain.model.ClipProject
 import com.example.domain.model.ClipSegment
+import com.example.domain.model.ExportJobStatus
 import com.example.domain.model.ExportProgressState
 import com.example.domain.model.ExportQuality
+import com.example.domain.model.ExportRenderJob
 import com.example.domain.model.ExportedClip
 import com.example.domain.model.HookOverlayStyle
 import com.example.domain.model.MusicMood
 import com.example.domain.model.MusicTrackRecommendation
 import com.example.domain.model.PopularVideoItem
+import com.example.domain.model.SocialSourcePlatform
 import com.example.domain.model.StudioImportSource
+import com.example.domain.model.StudioWorkspaceStateSnapshot
 import com.example.domain.model.TargetPlatform
+import com.example.domain.model.UndoHistoryUiState
 import com.example.domain.model.VideoFilterPreset
 import com.example.domain.model.VideoMetadata
 import com.example.domain.model.VideoTransitionStyle
+import com.example.domain.model.WorkspaceHistoryTarget
+import com.example.domain.model.WorkspaceUndoEntry
 import com.example.media.AudioMoodAnalyzer
 import com.example.media.MediaPlaybackCache
 import com.example.media.RoyaltyFreeMusicCatalog
@@ -55,6 +63,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -80,6 +89,7 @@ data class StudioUiState(
     val isLoadingVideo: Boolean = false,
     val selectedPlatform: TargetPlatform = TargetPlatform.REELS_TIKTOK,
     val focusTopic: String = "",
+    val includeWatermark: Boolean = false,
     val isAnalyzing: Boolean = false,
     val analysisProgress: Float = 0f,
     val analysisStepIndex: Int = 0,
@@ -177,13 +187,29 @@ class ClipperViewModel(
     private val _isBatchRunning = MutableStateFlow(false)
     val isBatchRunning: StateFlow<Boolean> = _isBatchRunning.asStateFlow()
 
+    private val _exportRenderQueue = MutableStateFlow<List<ExportRenderJob>>(emptyList())
+    val exportRenderQueue: StateFlow<List<ExportRenderJob>> = _exportRenderQueue.asStateFlow()
+
+    private val _isRenderQueueRunning = MutableStateFlow(false)
+    val isRenderQueueRunning: StateFlow<Boolean> = _isRenderQueueRunning.asStateFlow()
+
+    private val undoStack = ArrayDeque<WorkspaceUndoEntry>()
+    private val redoStack = ArrayDeque<WorkspaceUndoEntry>()
+    private var isApplyingUndoRedo = false
+    private val _undoHistoryState = MutableStateFlow(UndoHistoryUiState())
+    val undoHistoryState: StateFlow<UndoHistoryUiState> = _undoHistoryState.asStateFlow()
+
     private var activeExportJob: Job? = null
     private var activeAnalysisJob: Job? = null
     private var activeBatchJob: Job? = null
+    private var activeRenderQueueJob: Job? = null
+    private var activeRenderQueueJobId: String? = null
     private var studioThumbnailJob: Job? = null
     private var editorThumbnailJob: Job? = null
+    private var cloudSyncParentJob: Job? = null
     private var activeTransformer: Transformer? = null
     private var activeBatchTransformer: Transformer? = null
+    private var activeRenderQueueTransformer: Transformer? = null
 
     val cloudSyncState: StateFlow<CloudSyncUiState> =
         if (currentUserId != null && firestoreRepository != null) {
@@ -198,7 +224,7 @@ class ClipperViewModel(
                     if (firestoreError == null && error is CancellationException) throw error
                     val rootError = firestoreError ?: error
                     Log.w(TAG, "Error observing cloud projects", rootError)
-                    emit(CloudSyncUiState.Error(rootError.localizedMessage ?: "Gagal sinkronisasi Cloud Firestore"))
+                    emit(CloudSyncUiState.Error("Mode Lokal Aktif • Cloud Sync tertunda"))
                 }
                 .stateIn(
                     scope = viewModelScope,
@@ -222,39 +248,45 @@ class ClipperViewModel(
         startCloudSyncPipeline()
     }
 
+    fun ensureCloudSyncActive() {
+        if (cloudSyncParentJob?.isActive != true) {
+            startCloudSyncPipeline()
+        }
+    }
+
     private fun startCloudSyncPipeline() {
         val uid = currentUserId ?: return
         val repo = firestoreRepository ?: return
-        viewModelScope.launch {
+        cloudSyncParentJob?.cancel()
+        val syncJob = Job()
+        cloudSyncParentJob = syncJob
+
+        viewModelScope.launch(syncJob) {
             Firebase.auth.currentUser?.takeIf { it.uid == uid }?.let { user ->
                 repo.syncUserProfile(user)
             }
         }
-        viewModelScope.launch {
+        viewModelScope.launch(syncJob) {
             runCatching {
-                repo.observeCloudProjects(uid).collect { cloudProjects ->
+                combine(
+                    repo.observeCloudProjects(uid),
+                    repo.observeCloudSegments(uid)
+                ) { cloudProjects, cloudSegments ->
+                    cloudProjects to cloudSegments
+                }.collect { (cloudProjects, cloudSegments) ->
                     cloudProjects.forEach { cloud ->
                         projectRepository.restoreProjectFromCloud(cloud.toDomain())
                     }
-                }
-            }.onFailure { err ->
-                if (err is CancellationException) throw err
-                Log.w(TAG, "Cloud project restore error", err)
-            }
-        }
-        viewModelScope.launch {
-            runCatching {
-                repo.observeCloudSegments(uid).collect { cloudSegments ->
                     cloudSegments.forEach { cloudSeg ->
                         projectRepository.restoreSegmentFromCloud(cloudSeg.toDomain())
                     }
                 }
             }.onFailure { err ->
                 if (err is CancellationException) throw err
-                Log.w(TAG, "Cloud segment restore error", err)
+                Log.w(TAG, "Cloud project/segment restore error", err)
             }
         }
-        viewModelScope.launch {
+        viewModelScope.launch(syncJob) {
             runCatching {
                 repo.observeCloudExports(uid).collect { cloudExports ->
                     val existingIds = exportedClips.value.map { it.id }.toSet()
@@ -287,15 +319,203 @@ class ClipperViewModel(
     }
 
     fun prepareForSignOut() {
+        cloudSyncParentJob?.cancel()
+        cloudSyncParentJob = null
         activeTransformer?.cancel()
         activeBatchTransformer?.cancel()
+        activeRenderQueueTransformer?.cancel()
         activeExportJob?.cancel()
         activeAnalysisJob?.cancel()
         activeBatchJob?.cancel()
+        activeRenderQueueJob?.cancel()
         studioThumbnailJob?.cancel()
         editorThumbnailJob?.cancel()
         activeTransformer = null
         activeBatchTransformer = null
+        activeRenderQueueTransformer = null
+        activeRenderQueueJobId = null
+        _isRenderQueueRunning.value = false
+        clearUndoHistory()
+    }
+
+    private fun captureStudioSnapshot(state: StudioUiState = _studioState.value): StudioWorkspaceStateSnapshot {
+        return StudioWorkspaceStateSnapshot(
+            trimStartMs = state.trimStartMs,
+            trimEndMs = state.trimEndMs,
+            selectedFilter = state.selectedFilter,
+            brightness = state.brightness,
+            selectedPlatform = state.selectedPlatform,
+            focusTopic = state.focusTopic,
+            includeWatermark = state.includeWatermark
+        )
+    }
+
+    private fun refreshUndoHistoryState() {
+        _undoHistoryState.value = UndoHistoryUiState(
+            canUndo = undoStack.isNotEmpty(),
+            canRedo = redoStack.isNotEmpty(),
+            undoLabel = undoStack.lastOrNull()?.label,
+            redoLabel = redoStack.lastOrNull()?.label,
+            undoCount = undoStack.size,
+            redoCount = redoStack.size
+        )
+    }
+
+    private fun recordStudioHistory(
+        label: String,
+        actionCategory: String,
+        before: StudioWorkspaceStateSnapshot,
+        after: StudioWorkspaceStateSnapshot,
+        coalesce: Boolean = false
+    ) {
+        if (isApplyingUndoRedo || before == after) return
+        val now = System.currentTimeMillis()
+        redoStack.clear()
+        val last = undoStack.lastOrNull()
+        if (coalesce &&
+            last is WorkspaceUndoEntry.StudioEdit &&
+            last.actionCategory == actionCategory &&
+            (now - last.timestampMs) <= 750L
+        ) {
+            undoStack.removeLast()
+            if (last.before != after) {
+                undoStack.addLast(
+                    last.copy(
+                        after = after,
+                        timestampMs = now
+                    )
+                )
+            }
+        } else {
+            undoStack.addLast(
+                WorkspaceUndoEntry.StudioEdit(
+                    label = label,
+                    actionCategory = actionCategory,
+                    before = before,
+                    after = after,
+                    timestampMs = now
+                )
+            )
+            while (undoStack.size > 40) {
+                undoStack.removeFirst()
+            }
+        }
+        refreshUndoHistoryState()
+    }
+
+    private fun recordClipHistory(
+        label: String,
+        actionCategory: String,
+        before: ClipSegment,
+        after: ClipSegment,
+        coalesce: Boolean = false
+    ) {
+        if (isApplyingUndoRedo || before == after) return
+        val now = System.currentTimeMillis()
+        redoStack.clear()
+        val last = undoStack.lastOrNull()
+        if (coalesce &&
+            last is WorkspaceUndoEntry.ClipEdit &&
+            last.target == WorkspaceHistoryTarget.ClipSegmentTarget(after.id) &&
+            last.actionCategory == actionCategory &&
+            (now - last.timestampMs) <= 750L
+        ) {
+            undoStack.removeLast()
+            if (last.before != after) {
+                undoStack.addLast(
+                    last.copy(
+                        after = after,
+                        timestampMs = now
+                    )
+                )
+            }
+        } else {
+            undoStack.addLast(
+                WorkspaceUndoEntry.ClipEdit(
+                    label = label,
+                    actionCategory = actionCategory,
+                    before = before,
+                    after = after,
+                    timestampMs = now
+                )
+            )
+            while (undoStack.size > 40) {
+                undoStack.removeFirst()
+            }
+        }
+        refreshUndoHistoryState()
+    }
+
+    fun undoGlobal() {
+        val entry = undoStack.removeLastOrNull() ?: return
+        redoStack.addLast(entry)
+        applyUndoRedoEntry(entry, isUndo = true)
+        refreshUndoHistoryState()
+        _statusBannerMessage.value = "Undo: ${entry.label}"
+    }
+
+    fun redoGlobal() {
+        val entry = redoStack.removeLastOrNull() ?: return
+        undoStack.addLast(entry)
+        applyUndoRedoEntry(entry, isUndo = false)
+        refreshUndoHistoryState()
+        _statusBannerMessage.value = "Redo: ${entry.label}"
+    }
+
+    fun clearUndoHistory() {
+        undoStack.clear()
+        redoStack.clear()
+        refreshUndoHistoryState()
+    }
+
+    private fun applyUndoRedoEntry(entry: WorkspaceUndoEntry, isUndo: Boolean) {
+        isApplyingUndoRedo = true
+        try {
+            when (entry) {
+                is WorkspaceUndoEntry.StudioEdit -> {
+                    val target = if (isUndo) entry.before else entry.after
+                    _studioState.update { state ->
+                        val maxDuration = state.selectedVideo?.durationMs
+                        val safeStart = if (maxDuration != null) {
+                            target.trimStartMs.coerceIn(0L, (maxDuration - 1_000L).coerceAtLeast(0L))
+                        } else {
+                            target.trimStartMs.coerceAtLeast(0L)
+                        }
+                        val safeEnd = if (maxDuration != null) {
+                            target.trimEndMs.coerceIn((safeStart + 1_000L).coerceAtMost(maxDuration), maxDuration)
+                        } else {
+                            target.trimEndMs.coerceAtLeast(0L)
+                        }
+                        state.copy(
+                            trimStartMs = safeStart,
+                            trimEndMs = safeEnd,
+                            selectedFilter = target.selectedFilter,
+                            brightness = target.brightness,
+                            selectedPlatform = target.selectedPlatform,
+                            focusTopic = target.focusTopic,
+                            includeWatermark = target.includeWatermark
+                        )
+                    }
+                }
+
+                is WorkspaceUndoEntry.ClipEdit -> {
+                    val targetSeg = if (isUndo) entry.before else entry.after
+                    _editorState.update { state ->
+                        if (state.segment?.id == targetSeg.id) {
+                            state.copy(segment = targetSeg)
+                        } else {
+                            state
+                        }
+                    }
+                    viewModelScope.launch {
+                        projectRepository.updateSegment(targetSeg)
+                        syncSegmentUpdateToCloud(targetSeg)
+                    }
+                }
+            }
+        } finally {
+            isApplyingUndoRedo = false
+        }
     }
 
     fun updateImportSource(source: StudioImportSource) {
@@ -359,45 +579,37 @@ class ClipperViewModel(
                     _statusBannerMessage.value = "Stream ${resolved.platform.displayName} siap diputar lancar!"
 
                     studioThumbnailJob = viewModelScope.launch {
-                        coroutineScope {
-                            launch {
-                                MediaPlaybackCache.prewarmStream(getApplication(), streamUrl)
-                            }
-                            val inspectedDeferred = async {
-                                runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
-                            }
-                            val inspected = inspectedDeferred.await()
-                            val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: resolved.durationMs
-                            val finalWidth = inspected?.width?.takeIf { it > 0 } ?: resolved.width
-                            val finalHeight = inspected?.height?.takeIf { it > 0 } ?: resolved.height
+                        val inspected = runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
+                        val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: resolved.durationMs
+                        val finalWidth = inspected?.width?.takeIf { it > 0 } ?: resolved.width
+                        val finalHeight = inspected?.height?.takeIf { it > 0 } ?: resolved.height
 
-                            val thumbs = if (cachedThumbs.isNotEmpty()) {
-                                cachedThumbs
+                        val thumbs = if (cachedThumbs.isNotEmpty()) {
+                            cachedThumbs
+                        } else {
+                            runCatching {
+                                mediaProcessor.extractThumbnails(streamUri, finalDuration, count = 8)
+                            }.getOrDefault(emptyList())
+                        }
+
+                        _studioState.update { state ->
+                            val currentMeta = state.selectedVideo
+                            if (currentMeta?.uriString != streamUrl) return@update state
+                            val updatedEnd = if (state.trimEndMs <= 1_000L || state.trimEndMs > finalDuration) {
+                                minOf(finalDuration, state.selectedPlatform.maxRecommendedSec * 1000L)
+                                    .coerceAtLeast(minOf(finalDuration, 1_000L))
                             } else {
-                                runCatching {
-                                    mediaProcessor.extractThumbnails(streamUri, finalDuration, count = 8)
-                                }.getOrDefault(emptyList())
+                                state.trimEndMs
                             }
-
-                            _studioState.update { state ->
-                                val currentMeta = state.selectedVideo
-                                if (currentMeta?.uriString != streamUrl) return@update state
-                                val updatedEnd = if (state.trimEndMs <= 1_000L || state.trimEndMs > finalDuration) {
-                                    minOf(finalDuration, state.selectedPlatform.maxRecommendedSec * 1000L)
-                                        .coerceAtLeast(minOf(finalDuration, 1_000L))
-                                } else {
-                                    state.trimEndMs
-                                }
-                                state.copy(
-                                    selectedVideo = currentMeta.copy(
-                                        durationMs = finalDuration,
-                                        width = finalWidth,
-                                        height = finalHeight
-                                    ),
-                                    filmstripThumbnails = if (thumbs.isNotEmpty()) thumbs else state.filmstripThumbnails,
-                                    trimEndMs = updatedEnd
-                                )
-                            }
+                            state.copy(
+                                selectedVideo = currentMeta.copy(
+                                    durationMs = finalDuration,
+                                    width = finalWidth,
+                                    height = finalHeight
+                                ),
+                                filmstripThumbnails = if (thumbs.isNotEmpty()) thumbs else state.filmstripThumbnails,
+                                trimEndMs = updatedEnd
+                            )
                         }
                     }
                 } else {
@@ -431,11 +643,39 @@ class ClipperViewModel(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to resolve social link", e)
-                _studioState.update {
-                    it.copy(
-                        isLoadingVideo = false,
-                        errorMessage = e.localizedMessage ?: "Gagal memproses link video. Pastikan link valid dan terhubung ke internet."
-                    )
+                val fallbackUrl = socialLinkResolver.extractFirstUrl(rawInput)
+                if (fallbackUrl != null) {
+                    val platform = socialLinkResolver.detectPlatform(fallbackUrl)
+                    _studioState.update { state ->
+                        val initialEnd = minOf(60_000L, state.selectedPlatform.maxRecommendedSec * 1000L)
+                        state.copy(
+                            selectedVideo = VideoMetadata(
+                                uriString = fallbackUrl,
+                                title = "Video ${platform.displayName}",
+                                durationMs = 60_000L,
+                                width = if (platform == SocialSourcePlatform.YOUTUBE) 1280 else 1080,
+                                height = if (platform == SocialSourcePlatform.YOUTUBE) 720 else 1920,
+                                sourcePlatform = platform,
+                                originalShareUrl = fallbackUrl,
+                                hasPlayableStream = false,
+                                streamStatusNote = "Tautan ${platform.displayName} siap dibuka. Ketuk 'Buka Video' untuk menonton, 'Analisis & Buat Klip AI', atau tautkan file video lokal."
+                            ),
+                            filmstripThumbnails = emptyList(),
+                            trimStartMs = 0L,
+                            trimEndMs = initialEnd,
+                            suggestedHighlights = emptyList(),
+                            isLoadingVideo = false,
+                            errorMessage = null
+                        )
+                    }
+                    _statusBannerMessage.value = "Tautan ${platform.displayName} dimuat ke Studio."
+                } else {
+                    _studioState.update {
+                        it.copy(
+                            isLoadingVideo = false,
+                            errorMessage = "Masukkan link video yang valid (YouTube, TikTok, Instagram, atau URL .mp4)."
+                        )
+                    }
                 }
             }
         }
@@ -474,37 +714,32 @@ class ClipperViewModel(
                 errorMessage = null
             )
         }
-        _statusBannerMessage.value = "Memutar \"${item.title}\" dengan mode Anti-Buff!"
+        _statusBannerMessage.value = "Memutar \"${item.title}\" sekarang!"
 
         studioThumbnailJob = viewModelScope.launch {
-            coroutineScope {
-                launch {
-                    MediaPlaybackCache.prewarmStream(getApplication(), item.streamUrl)
-                }
-                val inspected = runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
-                val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: item.durationMs
-                val finalWidth = inspected?.width?.takeIf { it > 0 } ?: item.width
-                val finalHeight = inspected?.height?.takeIf { it > 0 } ?: item.height
-                val thumbs = if (cachedThumbs.isNotEmpty()) {
-                    cachedThumbs
-                } else {
-                    runCatching {
-                        mediaProcessor.extractThumbnails(streamUri, finalDuration, count = 8)
-                    }.getOrDefault(emptyList())
-                }
+            val inspected = runCatching { mediaProcessor.extractMetadata(streamUri) }.getOrNull()
+            val finalDuration = inspected?.durationMs?.takeIf { it > 1_000L } ?: item.durationMs
+            val finalWidth = inspected?.width?.takeIf { it > 0 } ?: item.width
+            val finalHeight = inspected?.height?.takeIf { it > 0 } ?: item.height
+            val thumbs = if (cachedThumbs.isNotEmpty()) {
+                cachedThumbs
+            } else {
+                runCatching {
+                    mediaProcessor.extractThumbnails(streamUri, finalDuration, count = 8)
+                }.getOrDefault(emptyList())
+            }
 
-                _studioState.update { state ->
-                    val currentMeta = state.selectedVideo
-                    if (currentMeta?.uriString != item.streamUrl) return@update state
-                    state.copy(
-                        selectedVideo = currentMeta.copy(
-                            durationMs = finalDuration,
-                            width = finalWidth,
-                            height = finalHeight
-                        ),
-                        filmstripThumbnails = if (thumbs.isNotEmpty()) thumbs else state.filmstripThumbnails
-                    )
-                }
+            _studioState.update { state ->
+                val currentMeta = state.selectedVideo
+                if (currentMeta?.uriString != item.streamUrl) return@update state
+                state.copy(
+                    selectedVideo = currentMeta.copy(
+                        durationMs = finalDuration,
+                        width = finalWidth,
+                        height = finalHeight
+                    ),
+                    filmstripThumbnails = if (thumbs.isNotEmpty()) thumbs else state.filmstripThumbnails
+                )
             }
         }
     }
@@ -574,7 +809,7 @@ class ClipperViewModel(
                 _studioState.update {
                     it.copy(
                         isLoadingVideo = false,
-                        errorMessage = "Gagal membaca metadata video: ${e.localizedMessage ?: "Format tidak didukung"}"
+                        errorMessage = "Format video ini belum didukung. Silakan pilih file video MP4/MOV lain dari galeri."
                     )
                 }
             }
@@ -631,38 +866,101 @@ class ClipperViewModel(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to attach local video to project", e)
-                _statusBannerMessage.value = "Gagal menautkan video: ${e.localizedMessage}"
+                _statusBannerMessage.value = "Video lokal belum terbaca. Silakan pilih file MP4 lain."
             }
         }
     }
 
     fun updateTargetPlatform(platform: TargetPlatform) {
+        val before = captureStudioSnapshot()
         _studioState.update { it.copy(selectedPlatform = platform) }
+        val after = captureStudioSnapshot()
+        recordStudioHistory(
+            label = "Platform ${platform.displayName}",
+            actionCategory = "studio_platform",
+            before = before,
+            after = after
+        )
     }
 
     fun updateFocusTopic(topic: String) {
+        val before = captureStudioSnapshot()
         _studioState.update { it.copy(focusTopic = topic) }
+        val after = captureStudioSnapshot()
+        recordStudioHistory(
+            label = "Topik Fokus Studio",
+            actionCategory = "studio_topic",
+            before = before,
+            after = after,
+            coalesce = true
+        )
     }
 
     fun updateStudioTrim(startMs: Long, endMs: Long) {
+        val before = captureStudioSnapshot()
         _studioState.update { state ->
             val maxDuration = state.selectedVideo?.durationMs ?: Long.MAX_VALUE
             val safeStart = startMs.coerceIn(0L, (maxDuration - 1_000L).coerceAtLeast(0L))
             val safeEnd = endMs.coerceIn((safeStart + 1_000L).coerceAtMost(maxDuration), maxDuration)
             state.copy(trimStartMs = safeStart, trimEndMs = safeEnd)
         }
+        val after = captureStudioSnapshot()
+        recordStudioHistory(
+            label = "Potong Timeline Studio",
+            actionCategory = "studio_trim",
+            before = before,
+            after = after,
+            coalesce = true
+        )
     }
 
     fun updateStudioFilter(filter: VideoFilterPreset) {
+        val before = captureStudioSnapshot()
         _studioState.update { it.copy(selectedFilter = filter) }
+        val after = captureStudioSnapshot()
+        recordStudioHistory(
+            label = "Filter Studio ${filter.label}",
+            actionCategory = "studio_filter",
+            before = before,
+            after = after
+        )
     }
 
     fun updateStudioBrightness(brightness: Float) {
+        val before = captureStudioSnapshot()
         _studioState.update { it.copy(brightness = brightness.coerceIn(-0.5f, 0.5f)) }
+        val after = captureStudioSnapshot()
+        recordStudioHistory(
+            label = "Kecerahan Studio",
+            actionCategory = "studio_brightness",
+            before = before,
+            after = after,
+            coalesce = true
+        )
     }
 
     fun resetStudioFilters() {
+        val before = captureStudioSnapshot()
         _studioState.update { it.copy(selectedFilter = VideoFilterPreset.NONE, brightness = 0f) }
+        val after = captureStudioSnapshot()
+        recordStudioHistory(
+            label = "Reset Filter Studio",
+            actionCategory = "studio_filter_reset",
+            before = before,
+            after = after
+        )
+    }
+
+    fun updateStudioWatermark(include: Boolean) {
+        val before = captureStudioSnapshot()
+        _studioState.update { it.copy(includeWatermark = include) }
+        val after = captureStudioSnapshot()
+        recordStudioHistory(
+            label = if (include) "Watermark Aktif" else "Tanpa Watermark",
+            actionCategory = "studio_watermark",
+            before = before,
+            after = after
+        )
     }
 
     fun suggestTimestampsForStudio() {
@@ -684,6 +982,7 @@ class ClipperViewModel(
                     sampleFrames = current.filmstripThumbnails
                 )
                 val topClip = aiResult.detectedClips.maxByOrNull { it.viralScore }
+                val before = captureStudioSnapshot()
                 _studioState.update { state ->
                     state.copy(
                         isSuggestingTimestamps = false,
@@ -692,6 +991,13 @@ class ClipperViewModel(
                         trimEndMs = topClip?.endMs ?: state.trimEndMs
                     )
                 }
+                val after = captureStudioSnapshot()
+                recordStudioHistory(
+                    label = "Rekomendasi Timestamp AI",
+                    actionCategory = "studio_ai_trim",
+                    before = before,
+                    after = after
+                )
                 _statusBannerMessage.value = if (aiResult.isPlaceholderMode) {
                     "Rekomendasi timestamp [Sampel AI] diterapkan ke slider."
                 } else {
@@ -704,7 +1010,7 @@ class ClipperViewModel(
                 _studioState.update {
                     it.copy(
                         isSuggestingTimestamps = false,
-                        errorMessage = e.localizedMessage ?: "Gagal menyarankan timestamp klip."
+                        errorMessage = "Rekomendasi timestamp sedang disiapkan. Silakan ketuk tombol sekali lagi."
                     )
                 }
             }
@@ -752,6 +1058,7 @@ class ClipperViewModel(
                     videoFilter = current.selectedFilter,
                     brightness = current.brightness,
                     showSubtitles = true,
+                    includeWatermark = current.includeWatermark,
                     isPlaceholderAi = false
                 )
                 val savedProjectId = projectRepository.saveProjectWithSegments(project) { projId ->
@@ -766,7 +1073,7 @@ class ClipperViewModel(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Manual studio export failed", e)
-                _statusBannerMessage.value = "Gagal memulai ekspor: ${e.localizedMessage}"
+                _statusBannerMessage.value = "Ekspor klip perlu dicoba ulang. Pastikan video siap diputar."
             }
         }
     }
@@ -810,6 +1117,7 @@ class ClipperViewModel(
                     videoFilter = current.selectedFilter,
                     brightness = current.brightness,
                     showSubtitles = true,
+                    includeWatermark = current.includeWatermark,
                     isPlaceholderAi = false
                 )
                 val savedProjectId = projectRepository.saveProjectWithSegments(project) { projId ->
@@ -825,7 +1133,7 @@ class ClipperViewModel(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to prepare manual clip for export settings", e)
-                _statusBannerMessage.value = "Gagal menyiapkan pengaturan ekspor: ${e.localizedMessage}"
+                _statusBannerMessage.value = "Pengaturan ekspor belum siap. Silakan coba sekali lagi."
             }
         }
     }
@@ -882,7 +1190,8 @@ class ClipperViewModel(
                         it.copy(
                             projectId = projectId,
                             videoFilter = current.selectedFilter,
-                            brightness = current.brightness
+                            brightness = current.brightness,
+                            includeWatermark = current.includeWatermark
                         )
                     }
                 }
@@ -903,7 +1212,7 @@ class ClipperViewModel(
                 _studioState.update {
                     it.copy(
                         isAnalyzing = false,
-                        errorMessage = e.localizedMessage ?: "Analisis video gagal."
+                        errorMessage = "Analisis AI membutuhkan koneksi stabil. Silakan ketuk Analisis & Buat Klip AI lagi."
                     )
                 }
             }
@@ -931,6 +1240,12 @@ class ClipperViewModel(
     fun toggleSegmentFavorite(segment: ClipSegment) {
         viewModelScope.launch {
             val updated = segment.copy(isFavorite = !segment.isFavorite)
+            recordClipHistory(
+                label = if (updated.isFavorite) "Tandai Favorit" else "Hapus Favorit",
+                actionCategory = "clip_favorite",
+                before = segment,
+                after = updated
+            )
             projectRepository.updateSegment(updated)
             syncSegmentUpdateToCloud(updated)
             if (_editorState.value.segment?.id == segment.id) {
@@ -988,28 +1303,21 @@ class ClipperViewModel(
                     isPlaceholderAi = segment.isPlaceholderAi
                 )
 
-                if (project.hasPlayableStream) {
+                if (project.hasPlayableStream && cachedThumbs.isEmpty()) {
                     editorThumbnailJob = viewModelScope.launch {
-                        coroutineScope {
-                            launch {
-                                MediaPlaybackCache.prewarmStream(getApplication(), project.sourceUri)
-                            }
-                            if (cachedThumbs.isEmpty()) {
-                                val thumbs = runCatching {
-                                    mediaProcessor.extractThumbnails(
-                                        sourceUri,
-                                        project.durationMs,
-                                        count = 8
-                                    )
-                                }.getOrDefault(emptyList())
-                                if (thumbs.isNotEmpty()) {
-                                    _editorState.update { state ->
-                                        if (state.segment?.id == segmentId) {
-                                            state.copy(thumbnails = thumbs)
-                                        } else {
-                                            state
-                                        }
-                                    }
+                        val thumbs = runCatching {
+                            mediaProcessor.extractThumbnails(
+                                sourceUri,
+                                project.durationMs,
+                                count = 8
+                            )
+                        }.getOrDefault(emptyList())
+                        if (thumbs.isNotEmpty()) {
+                            _editorState.update { state ->
+                                if (state.segment?.id == segmentId) {
+                                    state.copy(thumbnails = thumbs)
+                                } else {
+                                    state
                                 }
                             }
                         }
@@ -1020,132 +1328,214 @@ class ClipperViewModel(
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load clip editor", e)
                 _editorState.update {
-                    it.copy(isLoading = false, errorMessage = e.localizedMessage ?: "Gagal memuat editor.")
+                    it.copy(isLoading = false, errorMessage = "Editor klip belum dapat dibuka. Silakan pilih klip lagi.")
                 }
             }
         }
     }
 
-    fun updateEditorTrim(startMs: Long, endMs: Long) {
+    private inline fun mutateEditorSegmentWithHistory(
+        label: String,
+        actionCategory: String,
+        coalesce: Boolean = false,
+        transform: (EditorUiState, ClipSegment) -> ClipSegment
+    ): ClipSegment? {
+        var beforeSeg: ClipSegment? = null
+        var afterSeg: ClipSegment? = null
         _editorState.update { state ->
             val seg = state.segment ?: return@update state
+            val next = transform(state, seg)
+            beforeSeg = seg
+            afterSeg = next
+            state.copy(segment = next)
+        }
+        val b = beforeSeg
+        val a = afterSeg
+        if (b != null && a != null) {
+            recordClipHistory(
+                label = label,
+                actionCategory = actionCategory,
+                before = b,
+                after = a,
+                coalesce = coalesce
+            )
+        }
+        return a
+    }
+
+    fun updateEditorTrim(startMs: Long, endMs: Long) {
+        mutateEditorSegmentWithHistory(
+            label = "Potong Klip",
+            actionCategory = "clip_trim",
+            coalesce = true
+        ) { state, seg ->
             val maxDuration = state.project?.durationMs ?: Long.MAX_VALUE
             val safeStart = startMs.coerceIn(0L, (maxDuration - 1000L).coerceAtLeast(0L))
             val safeEnd = endMs.coerceIn((safeStart + 1000L).coerceAtMost(maxDuration), maxDuration)
-            state.copy(segment = seg.copy(startMs = safeStart, endMs = safeEnd))
+            seg.copy(startMs = safeStart, endMs = safeEnd)
         }
     }
 
     fun updateEditorAspectRatio(ratio: AspectRatioPreset) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(aspectRatio = ratio))
+        mutateEditorSegmentWithHistory(
+            label = "Rasio ${ratio.label}",
+            actionCategory = "clip_ratio"
+        ) { _, seg ->
+            seg.copy(aspectRatio = ratio)
         }
     }
 
     fun updateEditorFilter(filter: VideoFilterPreset) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(videoFilter = filter))
+        mutateEditorSegmentWithHistory(
+            label = "Filter ${filter.label}",
+            actionCategory = "clip_filter"
+        ) { _, seg ->
+            seg.copy(videoFilter = filter)
         }
     }
 
     fun updateEditorBrightness(brightness: Float) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(brightness = brightness.coerceIn(-0.5f, 0.5f)))
+        mutateEditorSegmentWithHistory(
+            label = "Kecerahan Klip",
+            actionCategory = "clip_brightness",
+            coalesce = true
+        ) { _, seg ->
+            seg.copy(brightness = brightness.coerceIn(-0.5f, 0.5f))
         }
     }
 
     fun resetEditorFilters() {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(videoFilter = VideoFilterPreset.NONE, brightness = 0f))
+        mutateEditorSegmentWithHistory(
+            label = "Reset Filter Klip",
+            actionCategory = "clip_filter_reset"
+        ) { _, seg ->
+            seg.copy(videoFilter = VideoFilterPreset.NONE, brightness = 0f)
         }
     }
 
     fun updateEditorHook(hook: String) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(hookLine = hook))
+        mutateEditorSegmentWithHistory(
+            label = "Edit Judul Hook",
+            actionCategory = "clip_hook_text",
+            coalesce = true
+        ) { _, seg ->
+            seg.copy(hookLine = hook)
         }
     }
 
     fun updateEditorCaption(caption: String) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(captionText = caption))
+        mutateEditorSegmentWithHistory(
+            label = "Edit Caption",
+            actionCategory = "clip_caption_text",
+            coalesce = true
+        ) { _, seg ->
+            seg.copy(captionText = caption)
         }
     }
 
     fun toggleEditorSubtitles(show: Boolean) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(showSubtitles = show))
+        mutateEditorSegmentWithHistory(
+            label = if (show) "Aktifkan Subtitle" else "Sembunyikan Subtitle",
+            actionCategory = "clip_subtitle_toggle"
+        ) { _, seg ->
+            seg.copy(showSubtitles = show)
         }
     }
 
     fun toggleEditorIncludeAudio(include: Boolean) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(includeAudio = include))
+        mutateEditorSegmentWithHistory(
+            label = if (include) "Sertakan Audio Asli" else "Bisukan Audio Asli",
+            actionCategory = "clip_audio_toggle"
+        ) { _, seg ->
+            seg.copy(includeAudio = include)
+        }
+    }
+
+    fun toggleEditorWatermark(include: Boolean) {
+        val updatedSeg = mutateEditorSegmentWithHistory(
+            label = if (include) "Watermark Aldi AI Clipper" else "Tanpa Watermark",
+            actionCategory = "clip_watermark"
+        ) { _, seg ->
+            seg.copy(includeWatermark = include)
+        }
+        updatedSeg?.let { seg ->
+            viewModelScope.launch { projectRepository.updateSegment(seg) }
+            syncSegmentUpdateToCloud(seg)
         }
     }
 
     fun updateEditorExportQuality(quality: ExportQuality) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(exportQuality = quality))
+        mutateEditorSegmentWithHistory(
+            label = "Kualitas ${quality.label}",
+            actionCategory = "clip_quality"
+        ) { _, seg ->
+            seg.copy(exportQuality = quality)
         }
     }
 
     fun toggleEditorIntroHook(show: Boolean) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(showIntroHook = show))
+        mutateEditorSegmentWithHistory(
+            label = if (show) "Aktifkan Hook 3 Detik" else "Nonaktifkan Hook 3 Detik",
+            actionCategory = "clip_intro_hook_toggle"
+        ) { _, seg ->
+            seg.copy(showIntroHook = show)
         }
     }
 
     fun updateEditorHookDuration(durationMs: Long) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(hookDurationMs = durationMs.coerceIn(1_500L, 5_000L)))
+        mutateEditorSegmentWithHistory(
+            label = "Durasi Hook",
+            actionCategory = "clip_hook_duration",
+            coalesce = true
+        ) { _, seg ->
+            seg.copy(hookDurationMs = durationMs.coerceIn(1_500L, 5_000L))
         }
     }
 
     fun updateEditorHookStyle(style: HookOverlayStyle) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(hookOverlayStyle = style))
+        mutateEditorSegmentWithHistory(
+            label = "Gaya Hook ${style.label}",
+            actionCategory = "clip_hook_style"
+        ) { _, seg ->
+            seg.copy(hookOverlayStyle = style)
         }
     }
 
     fun updateEditorMusicVolume(volume: Float) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(musicVolume = volume.coerceIn(0.05f, 1.0f)))
+        mutateEditorSegmentWithHistory(
+            label = "Volume Musik",
+            actionCategory = "clip_music_volume",
+            coalesce = true
+        ) { _, seg ->
+            seg.copy(musicVolume = volume.coerceIn(0.05f, 1.0f))
         }
     }
 
     fun updateEditorTransitionStyle(style: VideoTransitionStyle) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(transitionStyle = style))
+        mutateEditorSegmentWithHistory(
+            label = "Transisi ${style.label}",
+            actionCategory = "clip_transition_style"
+        ) { _, seg ->
+            seg.copy(transitionStyle = style)
         }
     }
 
     fun updateEditorTransitionDuration(durationMs: Long) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            state.copy(segment = seg.copy(transitionDurationMs = durationMs.coerceIn(250L, 1_500L)))
+        mutateEditorSegmentWithHistory(
+            label = "Durasi Transisi",
+            actionCategory = "clip_transition_duration",
+            coalesce = true
+        ) { _, seg ->
+            seg.copy(transitionDurationMs = durationMs.coerceIn(250L, 1_500L))
         }
     }
 
     fun selectMusicTrackForEditor(track: MusicTrackRecommendation?) {
-        var updatedSeg: ClipSegment? = null
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            val next = if (track == null) {
+        val updatedSeg = mutateEditorSegmentWithHistory(
+            label = if (track != null) "Musik: ${track.title}" else "Tanpa Musik Latar",
+            actionCategory = "clip_music_track"
+        ) { _, seg ->
+            if (track == null) {
                 seg.copy(
                     selectedMusicTrackId = null,
                     selectedMusicTitle = null,
@@ -1160,8 +1550,6 @@ class ClipperViewModel(
                     audioBpm = track.bpm
                 )
             }
-            updatedSeg = next
-            state.copy(segment = next)
         }
         updatedSeg?.let { seg ->
             viewModelScope.launch { projectRepository.updateSegment(seg) }
@@ -1206,7 +1594,7 @@ class ClipperViewModel(
                     it.copy(previewingTrackId = track.id, previewTrackUri = uri)
                 }
             } else {
-                _statusBannerMessage.value = "Gagal memutar pratinjau audio."
+                _statusBannerMessage.value = "Pratinjau audio sedang disiapkan."
             }
         }
     }
@@ -1260,9 +1648,11 @@ class ClipperViewModel(
                     focusTopic = proj.focusTopic
                 )
                 val topTrack = result.recommendedTracks.firstOrNull()
+                var beforeSegment: ClipSegment? = null
                 var updatedSegment: ClipSegment? = null
                 _editorState.update { state ->
                     val latest = state.segment ?: return@update state
+                    beforeSegment = latest
                     val nextSeg = if (latest.selectedMusicUrl.isNullOrBlank() && topTrack != null) {
                         latest.copy(
                             selectedMusicTrackId = topTrack.id,
@@ -1285,6 +1675,16 @@ class ClipperViewModel(
                         segment = nextSeg
                     )
                 }
+                val bMusic = beforeSegment
+                val aMusic = updatedSegment
+                if (bMusic != null && aMusic != null) {
+                    recordClipHistory(
+                        label = "Rekomendasi Musik AI",
+                        actionCategory = "clip_ai_music",
+                        before = bMusic,
+                        after = aMusic
+                    )
+                }
                 updatedSegment?.let {
                     projectRepository.updateSegment(it)
                     syncSegmentUpdateToCloud(it)
@@ -1301,7 +1701,7 @@ class ClipperViewModel(
                 _editorState.update {
                     it.copy(
                         isAnalyzingAudio = false,
-                        errorMessage = e.localizedMessage ?: "Gagal menganalisis audio klip."
+                        errorMessage = "Analisis audio klip perlu dicoba ulang."
                     )
                 }
             }
@@ -1339,9 +1739,11 @@ class ClipperViewModel(
                     introFrames = introFrames
                 )
 
+                var beforeSegment: ClipSegment? = null
                 var updatedSegment: ClipSegment? = null
                 _editorState.update { state ->
                     val latest = state.segment ?: return@update state
+                    beforeSegment = latest
                     val nextSeg = latest.copy(
                         hookLine = result.hookLine,
                         showIntroHook = true,
@@ -1352,6 +1754,16 @@ class ClipperViewModel(
                         isGeneratingHook = false,
                         hookRationale = result.rationale,
                         segment = nextSeg
+                    )
+                }
+                val bHook = beforeSegment
+                val aHook = updatedSegment
+                if (bHook != null && aHook != null) {
+                    recordClipHistory(
+                        label = "Visual Hook AI",
+                        actionCategory = "clip_ai_hook",
+                        before = bHook,
+                        after = aHook
                     )
                 }
                 updatedSegment?.let {
@@ -1370,7 +1782,7 @@ class ClipperViewModel(
                 _editorState.update {
                     it.copy(
                         isGeneratingHook = false,
-                        errorMessage = e.localizedMessage ?: "Gagal membuat hook 3 detik."
+                        errorMessage = "Visual hook 3 detik perlu dibuat ulang."
                     )
                 }
             }
@@ -1391,18 +1803,33 @@ class ClipperViewModel(
                     focusTopic = proj.focusTopic,
                     tone = tone
                 )
+                var beforeSegment: ClipSegment? = null
+                var afterSegment: ClipSegment? = null
                 _editorState.update { state ->
                     val latest = state.segment ?: return@update state
+                    beforeSegment = latest
+                    val nextSeg = latest.copy(
+                        hookLine = variation.hookLine,
+                        captionText = variation.captionText,
+                        hashtags = variation.hashtags,
+                        tone = tone,
+                        isPlaceholderAi = variation.isPlaceholderMode
+                    )
+                    afterSegment = nextSeg
                     state.copy(
                         isRegeneratingCaption = false,
                         isPlaceholderAi = variation.isPlaceholderMode,
-                        segment = latest.copy(
-                            hookLine = variation.hookLine,
-                            captionText = variation.captionText,
-                            hashtags = variation.hashtags,
-                            tone = tone,
-                            isPlaceholderAi = variation.isPlaceholderMode
-                        )
+                        segment = nextSeg
+                    )
+                }
+                val bCap = beforeSegment
+                val aCap = afterSegment
+                if (bCap != null && aCap != null) {
+                    recordClipHistory(
+                        label = "Caption AI (${tone.label})",
+                        actionCategory = "clip_ai_caption",
+                        before = bCap,
+                        after = aCap
                     )
                 }
             } catch (e: CancellationException) {
@@ -1412,7 +1839,7 @@ class ClipperViewModel(
                 _editorState.update {
                     it.copy(
                         isRegeneratingCaption = false,
-                        errorMessage = e.localizedMessage ?: "Gagal memperbarui caption."
+                        errorMessage = "Pembaruan caption perlu dicoba ulang."
                     )
                 }
             }
@@ -1450,9 +1877,11 @@ class ClipperViewModel(
                     clipFrames = clipFrames
                 )
 
+                var beforeSegment: ClipSegment? = null
                 var updatedSegment: ClipSegment? = null
                 _editorState.update { state ->
                     val latest = state.segment ?: return@update state
+                    beforeSegment = latest
                     val nextSegment = latest.copy(
                         subtitleCues = result.cues,
                         showSubtitles = true,
@@ -1463,6 +1892,16 @@ class ClipperViewModel(
                         isGeneratingSubtitles = false,
                         isPlaceholderAi = result.isPlaceholderMode,
                         segment = nextSegment
+                    )
+                }
+                val bSub = beforeSegment
+                val aSub = updatedSegment
+                if (bSub != null && aSub != null) {
+                    recordClipHistory(
+                        label = "Subtitle Otomatis AI",
+                        actionCategory = "clip_ai_subtitles",
+                        before = bSub,
+                        after = aSub
                     )
                 }
                 updatedSegment?.let {
@@ -1481,7 +1920,7 @@ class ClipperViewModel(
                 _editorState.update {
                     it.copy(
                         isGeneratingSubtitles = false,
-                        errorMessage = e.localizedMessage ?: "Gagal membuat subtitle otomatis."
+                        errorMessage = "Pembuatan subtitle otomatis perlu dicoba ulang."
                     )
                 }
             }
@@ -1489,13 +1928,16 @@ class ClipperViewModel(
     }
 
     fun updateSubtitleCueText(index: Int, newText: String) {
-        _editorState.update { state ->
-            val seg = state.segment ?: return@update state
-            if (index !in seg.subtitleCues.indices) return@update state
+        mutateEditorSegmentWithHistory(
+            label = "Edit Subtitle",
+            actionCategory = "clip_subtitle_cue_$index",
+            coalesce = true
+        ) { _, seg ->
+            if (index !in seg.subtitleCues.indices) return@mutateEditorSegmentWithHistory seg
             val updatedCues = seg.subtitleCues.mapIndexed { idx, cue ->
                 if (idx == index) cue.copy(text = newText) else cue
             }
-            state.copy(segment = seg.copy(subtitleCues = updatedCues))
+            seg.copy(subtitleCues = updatedCues)
         }
     }
 
@@ -1563,7 +2005,7 @@ class ClipperViewModel(
             } catch (e: Exception) {
                 Log.e(TAG, "Export failed", e)
                 _exportProgress.value = ExportProgressState.Error(
-                    e.localizedMessage ?: "Gagal mengekspor klip MP4."
+                    "Ekspor klip MP4 perlu dicoba ulang."
                 )
             } finally {
                 activeTransformer = null
@@ -1610,7 +2052,8 @@ class ClipperViewModel(
                             selectedMusicTrackId = activeEditorSeg.selectedMusicTrackId ?: seg.selectedMusicTrackId,
                             selectedMusicTitle = activeEditorSeg.selectedMusicTitle ?: seg.selectedMusicTitle,
                             selectedMusicUrl = activeEditorSeg.selectedMusicUrl ?: seg.selectedMusicUrl,
-                            musicVolume = activeEditorSeg.musicVolume
+                            musicVolume = activeEditorSeg.musicVolume,
+                            includeWatermark = activeEditorSeg.includeWatermark
                         )
                     }
                 } else {
@@ -1651,7 +2094,7 @@ class ClipperViewModel(
             } catch (e: Exception) {
                 Log.e(TAG, "Combined export failed", e)
                 _exportProgress.value = ExportProgressState.Error(
-                    e.localizedMessage ?: "Gagal menggabungkan klip dengan transisi."
+                    "Penggabungan klip dengan transisi perlu dicoba ulang."
                 )
             } finally {
                 activeTransformer = null
@@ -1698,7 +2141,7 @@ class ClipperViewModel(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save to gallery", e)
-                _statusBannerMessage.value = "Gagal menyimpan ke galeri: ${e.localizedMessage}"
+                _statusBannerMessage.value = "Penyimpanan ke galeri perlu dicoba ulang."
             }
         }
     }
@@ -1757,6 +2200,10 @@ class ClipperViewModel(
         _batchConfig.update { it.copy(autoExportTopClip = enabled) }
     }
 
+    fun updateBatchWatermark(include: Boolean) {
+        _batchConfig.update { it.copy(includeWatermark = include) }
+    }
+
     fun enqueueGalleryVideos(uris: List<Uri>, startImmediately: Boolean = false) {
         if (uris.isEmpty()) return
         val cfg = _batchConfig.value
@@ -1774,7 +2221,8 @@ class ClipperViewModel(
                 isSocialLink = false,
                 targetPlatform = cfg.targetPlatform,
                 videoFilter = cfg.videoFilter,
-                autoExportTopClip = cfg.autoExportTopClip
+                autoExportTopClip = cfg.autoExportTopClip,
+                includeWatermark = cfg.includeWatermark
             )
         }
         _batchQueue.update { it + newItems }
@@ -1802,7 +2250,8 @@ class ClipperViewModel(
                 isSocialLink = true,
                 targetPlatform = cfg.targetPlatform,
                 videoFilter = cfg.videoFilter,
-                autoExportTopClip = cfg.autoExportTopClip
+                autoExportTopClip = cfg.autoExportTopClip,
+                includeWatermark = cfg.includeWatermark
             )
         }
         _batchQueue.update { it + newItems }
@@ -1822,7 +2271,8 @@ class ClipperViewModel(
             durationMs = item.durationMs,
             targetPlatform = cfg.targetPlatform,
             videoFilter = cfg.videoFilter,
-            autoExportTopClip = cfg.autoExportTopClip
+            autoExportTopClip = cfg.autoExportTopClip,
+            includeWatermark = cfg.includeWatermark
         )
         _batchQueue.update { it + queueItem }
         _statusBannerMessage.value = "\"${item.title}\" ditambahkan ke antrean batch."
@@ -2013,7 +2463,8 @@ class ClipperViewModel(
                 aiResult.detectedClips.map {
                     it.copy(
                         projectId = projectId,
-                        videoFilter = initialItem.videoFilter
+                        videoFilter = initialItem.videoFilter,
+                        includeWatermark = initialItem.includeWatermark
                     )
                 }
             }
@@ -2079,8 +2530,8 @@ class ClipperViewModel(
             updateItem {
                 it.copy(
                     status = BatchItemStatus.FAILED,
-                    stageDetail = "Proses gagal",
-                    errorMessage = e.localizedMessage ?: "Gagal memproses video."
+                    stageDetail = "Perlu diproses ulang",
+                    errorMessage = "Video belum dapat diproses otomatis. Ketuk Coba Lagi."
                 )
             }
             false
@@ -2146,6 +2597,351 @@ class ClipperViewModel(
             openShareSheetForClip(clip)
         } else {
             _statusBannerMessage.value = "File ekspor belum tersedia."
+        }
+    }
+
+    fun enqueueActiveEditorSegmentForBackgroundExport(autoStart: Boolean = true) {
+        val seg = _editorState.value.segment ?: return
+        val proj = _editorState.value.project
+        enqueueClipForBackgroundExport(
+            segment = seg,
+            sourceUriString = proj?.sourceUri,
+            projectTitle = proj?.title,
+            autoStart = autoStart
+        )
+    }
+
+    fun enqueueManualStudioClipForBackgroundExport(autoStart: Boolean = true) {
+        val current = _studioState.value
+        val video = current.selectedVideo ?: return
+        if (!video.hasPlayableStream) {
+            _statusBannerMessage.value = "Tautkan file video lokal atau URL stream video langsung untuk mengantrekan ekspor."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val cleanTopic = current.focusTopic.trim().ifEmpty { video.title }
+                val project = ClipProject(
+                    title = video.title,
+                    sourceUri = video.uriString,
+                    durationMs = video.durationMs,
+                    width = video.width,
+                    height = video.height,
+                    targetPlatform = current.selectedPlatform,
+                    focusTopic = current.focusTopic,
+                    sourcePlatformName = video.sourcePlatform?.displayName,
+                    authorName = video.authorName,
+                    thumbnailUrl = video.thumbnailUrl,
+                    hasPlayableStream = true,
+                    isPlaceholderAi = false
+                )
+                val manualSegment = ClipSegment(
+                    projectId = 0L,
+                    title = "Klip Pilihan (${video.title.take(18)})",
+                    hookLine = "Sorotan pilihan dari $cleanTopic",
+                    viralScore = 90,
+                    rationale = "Rentang waktu dipilih langsung melalui slider timeline Studio.",
+                    captionText = "Klip pilihan dari ${video.title} untuk ${current.selectedPlatform.displayName}.",
+                    hashtags = "#AIClipper #ClipManual #Shorts",
+                    startMs = current.trimStartMs,
+                    endMs = current.trimEndMs,
+                    aspectRatio = current.selectedPlatform.defaultRatio,
+                    tone = CaptionTone.ENERGETIC,
+                    videoFilter = current.selectedFilter,
+                    brightness = current.brightness,
+                    showSubtitles = true,
+                    includeWatermark = current.includeWatermark,
+                    isPlaceholderAi = false
+                )
+                val savedProjectId = projectRepository.saveProjectWithSegments(project) { projId ->
+                    listOf(manualSegment.copy(projectId = projId))
+                }
+                val persistedSegment = projectRepository.getSegmentsForProject(savedProjectId).firstOrNull()
+                    ?: manualSegment.copy(projectId = savedProjectId)
+                syncProjectSnapshotToCloud(savedProjectId)
+                _selectedProjectId.value = savedProjectId
+                enqueueClipForBackgroundExport(
+                    segment = persistedSegment,
+                    sourceUriString = video.uriString,
+                    projectTitle = video.title,
+                    autoStart = autoStart
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to enqueue manual studio clip", e)
+                _statusBannerMessage.value = "Antrean klip Studio perlu dicoba ulang."
+            }
+        }
+    }
+
+    fun enqueueClipForBackgroundExport(
+        segment: ClipSegment,
+        sourceUriString: String? = null,
+        projectTitle: String? = null,
+        autoStart: Boolean = true
+    ) {
+        viewModelScope.launch {
+            val project = projectRepository.getProject(segment.projectId)
+            if (project != null && !project.hasPlayableStream) {
+                _statusBannerMessage.value = "Tautkan file video lokal terlebih dahulu agar klip dapat dirender di latar belakang."
+                return@launch
+            }
+            val uriStr = sourceUriString ?: project?.sourceUri
+            if (uriStr.isNullOrBlank()) {
+                _statusBannerMessage.value = "Sumber video proyek tidak ditemukan."
+                return@launch
+            }
+            val parsedUri = Uri.parse(uriStr)
+            val scheme = parsedUri.scheme?.lowercase()
+            if ((scheme == "http" || scheme == "https") && !UrlSecurityValidator.isSafeExternalHttpUrl(uriStr)) {
+                _statusBannerMessage.value = "URL sumber video tidak diizinkan untuk render latar belakang."
+                return@launch
+            }
+
+            if (segment.id > 0L) {
+                projectRepository.updateSegment(segment)
+                syncSegmentUpdateToCloud(segment)
+            }
+
+            val snapshot = segment.copy(subtitleCues = segment.subtitleCues.toList())
+            val job = ExportRenderJob(
+                id = UUID.randomUUID().toString(),
+                projectId = segment.projectId,
+                projectTitle = projectTitle ?: project?.title ?: snapshot.title,
+                segmentSnapshot = snapshot,
+                sourceUriString = uriStr
+            )
+            _exportRenderQueue.update { it + job }
+            _statusBannerMessage.value = "\"${snapshot.title}\" ditambahkan ke antrean render latar belakang."
+            if (autoStart) {
+                startExportRenderQueueWorker()
+            }
+        }
+    }
+
+    fun enqueueMultipleClipsForBackgroundExport(
+        segments: List<ClipSegment>,
+        sourceUriString: String? = null,
+        projectTitle: String? = null,
+        autoStart: Boolean = true
+    ) {
+        if (segments.isEmpty()) return
+        viewModelScope.launch {
+            val jobs = mutableListOf<ExportRenderJob>()
+            for (seg in segments) {
+                val project = projectRepository.getProject(seg.projectId)
+                if (project != null && !project.hasPlayableStream) continue
+                val uriStr = sourceUriString ?: project?.sourceUri ?: continue
+                val scheme = Uri.parse(uriStr).scheme?.lowercase()
+                if ((scheme == "http" || scheme == "https") && !UrlSecurityValidator.isSafeExternalHttpUrl(uriStr)) {
+                    continue
+                }
+                if (seg.id > 0L) {
+                    projectRepository.updateSegment(seg)
+                }
+                val snapshot = seg.copy(subtitleCues = seg.subtitleCues.toList())
+                jobs += ExportRenderJob(
+                    id = UUID.randomUUID().toString(),
+                    projectId = seg.projectId,
+                    projectTitle = projectTitle ?: project?.title ?: snapshot.title,
+                    segmentSnapshot = snapshot,
+                    sourceUriString = uriStr
+                )
+            }
+            if (jobs.isEmpty()) {
+                _statusBannerMessage.value = "Tidak ada klip dengan sumber video siap render."
+                return@launch
+            }
+            _exportRenderQueue.update { it + jobs }
+            _statusBannerMessage.value = "${jobs.size} klip masuk antrean render latar belakang. Anda bebas mengedit video lain."
+            if (autoStart) {
+                startExportRenderQueueWorker()
+            }
+        }
+    }
+
+    fun startExportRenderQueueWorker() {
+        if (activeRenderQueueJob?.isActive == true) return
+        if (_exportRenderQueue.value.none { it.status == ExportJobStatus.QUEUED }) return
+
+        activeRenderQueueJob = viewModelScope.launch {
+            _isRenderQueueRunning.value = true
+            var completedCount = 0
+            try {
+                while (true) {
+                    val nextJob = _exportRenderQueue.value.firstOrNull { it.status == ExportJobStatus.QUEUED }
+                        ?: break
+
+                    while (_exportProgress.value is ExportProgressState.Exporting) {
+                        delay(300L)
+                    }
+
+                    // Re-check status in case the queued job was cancelled while waiting
+                    val currentNext = _exportRenderQueue.value.firstOrNull { it.id == nextJob.id }
+                    if (currentNext == null || currentNext.status != ExportJobStatus.QUEUED) {
+                        continue
+                    }
+
+                    activeRenderQueueJobId = currentNext.id
+                    val ok = processSingleExportRenderJob(currentNext)
+                    activeRenderQueueJobId = null
+                    if (ok) {
+                        completedCount += 1
+                    }
+                }
+                if (completedCount > 0) {
+                    _statusBannerMessage.value = "Antrean render selesai: $completedCount klip siap di Galeri Ekspor."
+                }
+            } finally {
+                activeRenderQueueTransformer = null
+                activeRenderQueueJobId = null
+                _isRenderQueueRunning.value = false
+            }
+        }
+    }
+
+    private suspend fun processSingleExportRenderJob(job: ExportRenderJob): Boolean {
+        val jobId = job.id
+        fun updateJob(transform: (ExportRenderJob) -> ExportRenderJob) {
+            _exportRenderQueue.update { list ->
+                list.map { if (it.id == jobId) transform(it) else it }
+            }
+        }
+
+        return try {
+            updateJob {
+                it.copy(
+                    status = ExportJobStatus.RENDERING,
+                    progressPercent = 1,
+                    stageDetail = "Menyiapkan pipeline render ${job.segmentSnapshot.exportQuality.label}…",
+                    errorMessage = null
+                )
+            }
+
+            val exported = mediaProcessor.exportTrimmedClip(
+                sourceUri = Uri.parse(job.sourceUriString),
+                segment = job.segmentSnapshot,
+                onProgress = { pct ->
+                    updateJob {
+                        if (it.status == ExportJobStatus.CANCELLED) it
+                        else it.copy(
+                            progressPercent = pct.coerceIn(0, 99),
+                            stageDetail = "Merender ${job.segmentSnapshot.aspectRatio.label} • ${job.segmentSnapshot.exportQuality.label} ($pct%)…"
+                        )
+                    }
+                },
+                onTransformerCreated = { transformer ->
+                    activeRenderQueueTransformer = transformer
+                }
+            )
+            activeRenderQueueTransformer = null
+
+            val latestJob = _exportRenderQueue.value.firstOrNull { it.id == jobId }
+            if (latestJob?.status == ExportJobStatus.CANCELLED) {
+                return false
+            }
+
+            val savedId = projectRepository.saveExportedClip(exported)
+            val finalClip = exported.copy(id = savedId)
+            val parentProj = runCatching { projectRepository.getProject(job.projectId) }.getOrNull()
+            firestoreRepository?.upsertExportedClip(finalClip, parentProj)
+
+            updateJob {
+                it.copy(
+                    status = ExportJobStatus.COMPLETED,
+                    progressPercent = 100,
+                    stageDetail = if (finalClip.galleryUri != null) {
+                        "Selesai & tersimpan di Galeri"
+                    } else {
+                        "Render MP4 selesai"
+                    },
+                    exportedClip = finalClip
+                )
+            }
+            true
+        } catch (e: CancellationException) {
+            activeRenderQueueTransformer = null
+            val latestStatus = _exportRenderQueue.value.firstOrNull { it.id == jobId }?.status
+            if (latestStatus == ExportJobStatus.CANCELLED) {
+                false
+            } else {
+                updateJob {
+                    it.copy(
+                        status = ExportJobStatus.CANCELLED,
+                        stageDetail = "Render dibatalkan"
+                    )
+                }
+                throw e
+            }
+        } catch (e: Exception) {
+            activeRenderQueueTransformer = null
+            val latestStatus = _exportRenderQueue.value.firstOrNull { it.id == jobId }?.status
+            if (latestStatus == ExportJobStatus.CANCELLED) {
+                false
+            } else {
+                Log.e(TAG, "Background export render failed for ${job.segmentSnapshot.title}", e)
+                updateJob {
+                    it.copy(
+                        status = ExportJobStatus.FAILED,
+                        stageDetail = "Perlu render ulang",
+                        errorMessage = "Render MP4 perlu dicoba ulang. Pastikan video sumber tersedia."
+                    )
+                }
+                false
+            }
+        }
+    }
+
+    fun cancelExportRenderJob(jobId: String) {
+        val isCurrentActive = activeRenderQueueJobId == jobId
+        _exportRenderQueue.update { list ->
+            list.map { job ->
+                if (job.id == jobId && job.isPendingOrActive) {
+                    job.copy(
+                        status = ExportJobStatus.CANCELLED,
+                        stageDetail = "Dibatalkan oleh pengguna"
+                    )
+                } else {
+                    job
+                }
+            }
+        }
+        if (isCurrentActive) {
+            activeRenderQueueTransformer?.cancel()
+            activeRenderQueueTransformer = null
+        }
+    }
+
+    fun retryExportRenderJob(jobId: String, autoStart: Boolean = true) {
+        _exportRenderQueue.update { list ->
+            list.map { job ->
+                if (job.id == jobId && (job.status == ExportJobStatus.FAILED || job.status == ExportJobStatus.CANCELLED)) {
+                    job.copy(
+                        status = ExportJobStatus.QUEUED,
+                        progressPercent = 0,
+                        stageDetail = "Menunggu antrean render ulang",
+                        errorMessage = null
+                    )
+                } else {
+                    job
+                }
+            }
+        }
+        if (autoStart) {
+            startExportRenderQueueWorker()
+        }
+    }
+
+    fun removeExportRenderJob(jobId: String) {
+        _exportRenderQueue.update { list ->
+            list.filterNot { it.id == jobId && !it.isActive }
+        }
+    }
+
+    fun clearCompletedExportRenderJobs() {
+        _exportRenderQueue.update { list ->
+            list.filterNot { it.status == ExportJobStatus.COMPLETED || it.status == ExportJobStatus.CANCELLED }
         }
     }
 

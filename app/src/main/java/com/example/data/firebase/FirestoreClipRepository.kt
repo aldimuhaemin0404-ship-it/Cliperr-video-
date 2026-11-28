@@ -185,9 +185,26 @@ class FirestoreClipRepository(
                 ops += { b -> b.set(projRef, project.toFirestoreCreateMap(uid)) }
             }
 
+            val existingSegIds = if (projExists && segments.isNotEmpty()) {
+                userDoc.collection("segments")
+                    .whereEqualTo("projectCloudId", projId)
+                    .get()
+                    .await()
+                    .documents
+                    .map { it.id }
+                    .toSet()
+            } else {
+                emptySet()
+            }
+
             segments.forEach { seg ->
-                val segRef = userDoc.collection("segments").document(segmentDocId(seg.id))
-                ops += { b -> b.set(segRef, seg.toFirestoreCreateMap(userId = uid, projectCloudId = projId)) }
+                val segId = segmentDocId(seg.id)
+                val segRef = userDoc.collection("segments").document(segId)
+                if (segId in existingSegIds) {
+                    ops += { b -> b.update(segRef, seg.toFirestoreUpdateMap()) }
+                } else {
+                    ops += { b -> b.set(segRef, seg.toFirestoreCreateMap(userId = uid, projectCloudId = projId)) }
+                }
             }
             commitChunkedBatches(ops)
             Result.success(Unit)

@@ -72,6 +72,7 @@ function validSegmentPayload(
     audioMoodLabel: "Upbeat / Enerjik",
     audioBpm: 124,
     exportQuality: "HD_1080P",
+    includeWatermark: false,
     favorite: false,
     placeholderAi: false,
     createdAt: now,
@@ -223,6 +224,7 @@ test("Owner can create/update/list projects, segments, and exports mirroring Kot
       .doc("seg_101")
       .update({
         favorite: true,
+        includeWatermark: true,
         transitionStyle: "SLIDE",
         aspectRatio: "PORTRAIT_4_5",
         exportQuality: "HD_720P",
@@ -412,6 +414,19 @@ test("Security bounds reject cross-user access, @DocumentId id key, orphaned seg
       .update({
         localProjectId: 999,
         updatedAt: new Date(Date.now() - 100),
+      })
+  );
+
+  // Reject non-boolean includeWatermark value on segment
+  await assertFails(
+    aliceDb
+      .collection("users")
+      .doc(ALICE_UID)
+      .collection("segments")
+      .doc("seg_bad_watermark")
+      .set({
+        ...validSegmentPayload(ALICE_UID, "proj_10", now),
+        includeWatermark: "yes",
       })
   );
 });

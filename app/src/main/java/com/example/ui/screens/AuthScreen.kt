@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -74,7 +75,7 @@ fun AuthScreen(
 
     var isCheckingSession by remember { mutableStateOf(true) }
     var isSigningIn by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var authNoticeMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         attemptAutoSignIn(
@@ -173,25 +174,36 @@ fun AuthScreen(
                     )
                 }
 
-                errorMessage?.let { msg ->
+                authNoticeMessage?.let { msg ->
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                        shape = RoundedCornerShape(14.dp),
+                        color = CosmicBackground.copy(alpha = 0.85f),
+                        border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.65f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = msg,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = FuturisticCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = msg,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.92f)
+                            )
+                        }
                     }
                 }
 
                 Button(
                     onClick = {
-                        errorMessage = null
+                        authNoticeMessage = null
                         isSigningIn = true
                         onGoogleSignInClicked(
                             context = context,
@@ -202,7 +214,7 @@ fun AuthScreen(
                             },
                             onAuthError = { msg ->
                                 isSigningIn = false
-                                errorMessage = msg
+                                authNoticeMessage = msg
                             },
                             scope = scope,
                             onAuthCancelled = {

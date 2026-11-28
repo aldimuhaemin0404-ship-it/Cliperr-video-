@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.CropPortrait
 import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Subtitles
@@ -35,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -62,6 +65,8 @@ import com.example.domain.model.ClipSegment
 import com.example.domain.model.ExportProgressState
 import com.example.domain.model.ExportQuality
 import com.example.domain.model.ExportedClip
+import com.example.domain.model.UndoHistoryUiState
+import com.example.ui.components.GlobalUndoRedoControls
 import com.example.ui.state.EditorUiState
 import com.example.ui.theme.CosmicBackground
 import com.example.ui.theme.CosmicSurface
@@ -77,6 +82,9 @@ fun ExportSettingsScreen(
     editorState: EditorUiState,
     exportProgress: ExportProgressState,
     autoOpenShareSheet: Boolean,
+    undoState: UndoHistoryUiState = UndoHistoryUiState(),
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
     onBack: () -> Unit,
     onSelectAspectRatio: (AspectRatioPreset) -> Unit,
     onSelectQuality: (ExportQuality) -> Unit,
@@ -84,7 +92,9 @@ fun ExportSettingsScreen(
     onToggleIncludeAudio: (Boolean) -> Unit,
     onToggleMusic: (Boolean) -> Unit,
     onToggleAutoOpenShareSheet: (Boolean) -> Unit,
+    onToggleWatermark: (Boolean) -> Unit = {},
     onStartExport: (ClipSegment, String) -> Unit,
+    onEnqueueExport: (ClipSegment, String) -> Unit = { _, _ -> },
     onCancelExport: () -> Unit,
     onExportCompleted: (ExportedClip) -> Unit,
     modifier: Modifier = Modifier
@@ -125,6 +135,14 @@ fun ExportSettingsScreen(
                             contentDescription = stringResource(R.string.editor_back)
                         )
                     }
+                },
+                actions = {
+                    GlobalUndoRedoControls(
+                        undoState = undoState,
+                        onUndo = onUndo,
+                        onRedo = onRedo,
+                        showActionLabel = false
+                    )
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = CosmicBackground
@@ -181,11 +199,16 @@ fun ExportSettingsScreen(
                                         color = Color.White,
                                         maxLines = 1
                                     )
+                                    val wmSummary = if (segment.includeWatermark) {
+                                        stringResource(R.string.watermark_brand_label)
+                                    } else {
+                                        stringResource(R.string.watermark_none_label)
+                                    }
                                     Text(
                                         text = if (segment.aspectRatio == AspectRatioPreset.VERTICAL_9_16 || segment.aspectRatio == AspectRatioPreset.PORTRAIT_4_5) {
-                                            "Format Vertikal • ${segment.aspectRatio.label} • ${segment.exportQuality.label}"
+                                            "Format Vertikal • ${segment.aspectRatio.label} • ${segment.exportQuality.label} • $wmSummary"
                                         } else {
-                                            "Format ${segment.aspectRatio.label} • ${segment.exportQuality.label}"
+                                            "Format ${segment.aspectRatio.label} • ${segment.exportQuality.label} • $wmSummary"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -338,6 +361,40 @@ fun ExportSettingsScreen(
                         }
                     }
 
+                    // Watermark selection (Tanpa Watermark vs Dengan Watermark)
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = stringResource(R.string.watermark_section_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                WatermarkOptionCard(
+                                    title = stringResource(R.string.watermark_none_label),
+                                    subtitle = stringResource(R.string.watermark_none_desc),
+                                    selected = !segment.includeWatermark,
+                                    onClick = { onToggleWatermark(false) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("export_watermark_none_option")
+                                )
+                                WatermarkOptionCard(
+                                    title = stringResource(R.string.watermark_brand_label),
+                                    subtitle = stringResource(R.string.watermark_brand_desc),
+                                    selected = segment.includeWatermark,
+                                    onClick = { onToggleWatermark(true) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("export_watermark_brand_option")
+                                )
+                            }
+                        }
+                    }
+
                     // Toggle switches card
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -434,8 +491,8 @@ fun ExportSettingsScreen(
                         item {
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF421226),
-                                border = BorderStroke(1.dp, NeonMagenta),
+                                color = CosmicSurfaceElevated,
+                                border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.65f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
@@ -448,55 +505,88 @@ fun ExportSettingsScreen(
                         }
                     }
 
-                    // Primary gradient CTA button: Ekspor Video 🚀
+                    // Primary gradient CTA button + Secondary Background Queue CTA
                     item {
                         val isExporting = exportProgress is ExportProgressState.Exporting
                         val enabled = project.hasPlayableStream && !isExporting
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp, bottom = 16.dp)
-                                .height(58.dp)
-                                .clip(RoundedCornerShape(28.dp))
-                                .background(
-                                    if (enabled) {
-                                        Brush.horizontalGradient(
-                                            colors = listOf(FuturisticCyan, NeonPurple, NeonMagenta)
+                                .padding(top = 8.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(58.dp)
+                                    .clip(RoundedCornerShape(28.dp))
+                                    .background(
+                                        if (enabled) {
+                                            Brush.horizontalGradient(
+                                                colors = listOf(FuturisticCyan, NeonPurple, NeonMagenta)
+                                            )
+                                        } else {
+                                            Brush.horizontalGradient(
+                                                colors = listOf(CosmicSurfaceElevated, CosmicSurfaceElevated)
+                                            )
+                                        }
+                                    )
+                                    .clickable(enabled = enabled) {
+                                        onStartExport(segment, project.sourceUri)
+                                    }
+                                    .testTag("confirm_export_video_button"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    if (isExporting) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.5.dp,
+                                            color = Color.White
                                         )
                                     } else {
-                                        Brush.horizontalGradient(
-                                            colors = listOf(CosmicSurfaceElevated, CosmicSurfaceElevated)
+                                        Icon(
+                                            imageVector = Icons.Filled.RocketLaunch,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     }
-                                )
-                                .clickable(enabled = enabled) {
-                                    onStartExport(segment, project.sourceUri)
-                                }
-                                .testTag("confirm_export_video_button"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                if (isExporting) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.5.dp,
+                                    Text(
+                                        text = stringResource(R.string.export_settings_start_cta),
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                         color = Color.White
                                     )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Filled.RocketLaunch,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(22.dp)
-                                    )
                                 }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    onEnqueueExport(segment, project.sourceUri)
+                                    onBack()
+                                },
+                                enabled = project.hasPlayableStream,
+                                border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                                shape = RoundedCornerShape(28.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .testTag("export_settings_enqueue_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.QueuePlayNext,
+                                    contentDescription = null,
+                                    tint = FuturisticCyan,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = stringResource(R.string.export_settings_start_cta),
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color.White
+                                    text = stringResource(R.string.export_queue_enqueue_cta),
+                                    color = FuturisticCyan,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
                         }
@@ -545,6 +635,50 @@ private fun FormatOptionCard(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = Color.White,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun WatermarkOptionCard(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .height(74.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) NeonPurple.copy(alpha = 0.25f) else CosmicSurface,
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) FuturisticCyan.copy(alpha = 0.85f) else MaterialTheme.colorScheme.outline
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected) FuturisticCyan else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
         }

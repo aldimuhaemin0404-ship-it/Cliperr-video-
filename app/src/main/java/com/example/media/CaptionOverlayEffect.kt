@@ -39,6 +39,10 @@ object CaptionOverlayEffects {
             overlays += CaptionBitmapOverlay(segment)
         }
 
+        if (segment.includeWatermark) {
+            overlays += WatermarkBitmapOverlay()
+        }
+
         if (overlays.isEmpty()) return null
         return OverlayEffect(overlays)
     }
@@ -331,6 +335,94 @@ private class CaptionBitmapOverlay(
         canvas.translate(textOffsetX, textOffsetY)
         layout.draw(canvas)
         canvas.restore()
+
+        return bitmap
+    }
+}
+
+@OptIn(UnstableApi::class)
+private class WatermarkBitmapOverlay : BitmapOverlay() {
+
+    private var videoSize: Size = Size(1080, 1920)
+    private var cachedBitmap: Bitmap? = null
+
+    private val overlaySettings: StaticOverlaySettings = StaticOverlaySettings.Builder()
+        .setBackgroundFrameAnchor(0.88f, 0.88f)
+        .setOverlayFrameAnchor(1f, 1f)
+        .build()
+
+    override fun configure(videoSize: Size) {
+        super.configure(videoSize)
+        if (videoSize.width > 0 && videoSize.height > 0) {
+            this.videoSize = videoSize
+        }
+        cachedBitmap?.let { if (!it.isRecycled) it.recycle() }
+        cachedBitmap = null
+    }
+
+    override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings = overlaySettings
+
+    override fun getBitmap(presentationTimeUs: Long): Bitmap {
+        val existing = cachedBitmap
+        if (existing != null && !existing.isRecycled) {
+            return existing
+        }
+        return renderWatermarkBitmap(videoSize.width, videoSize.height).also {
+            cachedBitmap = it
+        }
+    }
+
+    override fun release() {
+        super.release()
+        cachedBitmap?.let { if (!it.isRecycled) it.recycle() }
+        cachedBitmap = null
+    }
+
+    private fun renderWatermarkBitmap(frameWidth: Int, frameHeight: Int): Bitmap {
+        val safeW = frameWidth.coerceAtLeast(360)
+        val safeH = frameHeight.coerceAtLeast(360)
+        val minDim = min(safeW, safeH).toFloat()
+
+        val label = "Aldi AI Clipper"
+        val textSizePx = (minDim * 0.030f).coerceIn(16f, 34f)
+        val hPadding = (textSizePx * 0.85f).toInt().coerceAtLeast(14)
+        val vPadding = (textSizePx * 0.45f).toInt().coerceAtLeast(8)
+
+        val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = textSizePx
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            setShadowLayer(3f, 0f, 1.5f, Color.argb(180, 0, 0, 0))
+        }
+
+        val textWidth = textPaint.measureText(label)
+        val fm = textPaint.fontMetrics
+        val textHeight = (fm.descent - fm.ascent)
+
+        val pillWidth = (textWidth.toInt() + hPadding * 2).coerceIn(110, (safeW * 0.48f).toInt())
+        val pillHeight = (textHeight.toInt() + vPadding * 2).coerceAtLeast(28)
+
+        val bitmap = Bitmap.createBitmap(pillWidth, pillHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val rect = RectF(2f, 2f, pillWidth - 2f, pillHeight - 2f)
+        val cornerRadius = pillHeight / 2f
+
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb(196, 11, 14, 20)
+        }
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = (textSizePx * 0.08f).coerceIn(1.5f, 3.5f)
+            color = Color.argb(200, 6, 182, 212)
+        }
+
+        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
+        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, borderPaint)
+
+        val textX = (pillWidth - textWidth) / 2f
+        val textY = (pillHeight - (fm.descent + fm.ascent)) / 2f
+        canvas.drawText(label, textX, textY, textPaint)
 
         return bitmap
     }

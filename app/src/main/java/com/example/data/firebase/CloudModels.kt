@@ -104,6 +104,7 @@ data class CloudClipSegment(
     val audioMoodLabel: String? = null,
     val audioBpm: Long? = null,
     val exportQuality: String = ExportQuality.HD_1080P.name,
+    val includeWatermark: Boolean = false,
     val favorite: Boolean = false,
     val placeholderAi: Boolean = false,
     val createdAt: Timestamp? = null,
@@ -138,6 +139,7 @@ data class CloudClipSegment(
         audioMoodLabel = audioMoodLabel,
         audioBpm = audioBpm?.toInt(),
         exportQuality = safeEnumValueOf(exportQuality, ExportQuality.HD_1080P),
+        includeWatermark = includeWatermark,
         isFavorite = favorite,
         isPlaceholderAi = placeholderAi
     )
@@ -175,20 +177,45 @@ data class CloudExportedClip(
     )
 }
 
+private fun sanitizeCloudUriOrNull(raw: String?): String? {
+    val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val lower = trimmed.lowercase()
+    val allowed = lower.startsWith("https://") ||
+        lower.startsWith("http://") ||
+        lower.startsWith("content://") ||
+        lower.startsWith("synth://") ||
+        lower.startsWith("local://")
+    return if (allowed) trimmed.take(1000) else null
+}
+
+private fun sanitizeProjectSourceUri(raw: String): String {
+    return sanitizeCloudUriOrNull(raw) ?: "local://video"
+}
+
+private fun sanitizeGalleryUriOrNull(raw: String?): String? {
+    val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() && !it.contains("..") } ?: return null
+    val lower = trimmed.lowercase()
+    val allowed = lower.startsWith("https://") ||
+        lower.startsWith("http://") ||
+        lower.startsWith("content://") ||
+        lower.startsWith("file://")
+    return if (allowed) trimmed.take(1000) else null
+}
+
 internal fun ClipProject.toFirestoreCreateMap(userId: String): Map<String, Any> =
     mapOf<String, Any?>(
         "userId" to userId,
         "localProjectId" to id.coerceAtLeast(0L),
         "title" to title.trim().ifEmpty { "Proyek Klip" }.take(200),
-        "sourceUri" to sourceUri.trim().ifEmpty { "local://video" }.take(1000),
+        "sourceUri" to sanitizeProjectSourceUri(sourceUri),
         "durationMs" to durationMs.coerceIn(0L, 86_400_000L),
         "width" to width.toLong().coerceIn(0L, 16_384L),
         "height" to height.toLong().coerceIn(0L, 16_384L),
         "targetPlatform" to targetPlatform.name,
         "focusTopic" to focusTopic.take(200),
-        "sourcePlatformName" to sourcePlatformName?.take(80),
-        "authorName" to authorName?.take(120),
-        "thumbnailUrl" to thumbnailUrl?.take(1000),
+        "sourcePlatformName" to sourcePlatformName?.trim()?.takeIf { it.isNotEmpty() }?.take(80),
+        "authorName" to authorName?.trim()?.takeIf { it.isNotEmpty() }?.take(120),
+        "thumbnailUrl" to sanitizeCloudUriOrNull(thumbnailUrl),
         "hasPlayableStream" to hasPlayableStream,
         "placeholderAi" to isPlaceholderAi,
         "createdAt" to FieldValue.serverTimestamp(),
@@ -198,15 +225,15 @@ internal fun ClipProject.toFirestoreCreateMap(userId: String): Map<String, Any> 
 internal fun ClipProject.toFirestoreUpdateMap(): Map<String, Any> =
     mapOf<String, Any?>(
         "title" to title.trim().ifEmpty { "Proyek Klip" }.take(200),
-        "sourceUri" to sourceUri.trim().ifEmpty { "local://video" }.take(1000),
+        "sourceUri" to sanitizeProjectSourceUri(sourceUri),
         "durationMs" to durationMs.coerceIn(0L, 86_400_000L),
         "width" to width.toLong().coerceIn(0L, 16_384L),
         "height" to height.toLong().coerceIn(0L, 16_384L),
         "targetPlatform" to targetPlatform.name,
         "focusTopic" to focusTopic.take(200),
-        "sourcePlatformName" to sourcePlatformName?.take(80),
-        "authorName" to authorName?.take(120),
-        "thumbnailUrl" to thumbnailUrl?.take(1000),
+        "sourcePlatformName" to sourcePlatformName?.trim()?.takeIf { it.isNotEmpty() }?.take(80),
+        "authorName" to authorName?.trim()?.takeIf { it.isNotEmpty() }?.take(120),
+        "thumbnailUrl" to sanitizeCloudUriOrNull(thumbnailUrl),
         "hasPlayableStream" to hasPlayableStream,
         "placeholderAi" to isPlaceholderAi,
         "updatedAt" to FieldValue.serverTimestamp()
@@ -215,8 +242,10 @@ internal fun ClipProject.toFirestoreUpdateMap(): Map<String, Any> =
 internal fun ClipSegment.toFirestoreCreateMap(
     userId: String,
     projectCloudId: String
-): Map<String, Any> =
-    mapOf<String, Any?>(
+): Map<String, Any> {
+    val safeStart = startMs.coerceIn(0L, 86_399_000L)
+    val safeEnd = endMs.coerceIn(safeStart + 1L, 86_400_000L)
+    return mapOf<String, Any?>(
         "userId" to userId,
         "projectCloudId" to projectCloudId,
         "localProjectId" to projectId.coerceAtLeast(0L),
@@ -227,8 +256,8 @@ internal fun ClipSegment.toFirestoreCreateMap(
         "rationale" to rationale.take(800),
         "captionText" to captionText.take(1500),
         "hashtags" to hashtags.take(400),
-        "startMs" to startMs.coerceIn(0L, 86_400_000L),
-        "endMs" to endMs.coerceIn(0L, 86_400_000L),
+        "startMs" to safeStart,
+        "endMs" to safeEnd,
         "aspectRatio" to aspectRatio.name,
         "tone" to tone.name,
         "videoFilter" to videoFilter.name,
@@ -240,29 +269,33 @@ internal fun ClipSegment.toFirestoreCreateMap(
         "transitionStyle" to transitionStyle.name,
         "transitionDurationMs" to transitionDurationMs.coerceIn(100L, 3_000L),
         "includeAudio" to includeAudio,
-        "selectedMusicTrackId" to selectedMusicTrackId?.take(120),
-        "selectedMusicTitle" to selectedMusicTitle?.take(200),
-        "selectedMusicUrl" to selectedMusicUrl?.take(1000),
+        "selectedMusicTrackId" to selectedMusicTrackId?.trim()?.takeIf { it.isNotEmpty() }?.take(120),
+        "selectedMusicTitle" to selectedMusicTitle?.trim()?.takeIf { it.isNotEmpty() }?.take(200),
+        "selectedMusicUrl" to sanitizeCloudUriOrNull(selectedMusicUrl),
         "musicVolume" to musicVolume.toDouble().coerceIn(0.0, 1.0),
-        "audioMoodLabel" to audioMoodLabel?.take(80),
+        "audioMoodLabel" to audioMoodLabel?.trim()?.takeIf { it.isNotEmpty() }?.take(80),
         "audioBpm" to audioBpm?.toLong()?.coerceIn(30L, 300L),
         "exportQuality" to exportQuality.name,
+        "includeWatermark" to includeWatermark,
         "favorite" to isFavorite,
         "placeholderAi" to isPlaceholderAi,
         "createdAt" to FieldValue.serverTimestamp(),
         "updatedAt" to FieldValue.serverTimestamp()
     ).filterValues { it != null }.mapValues { it.value!! }
+}
 
-internal fun ClipSegment.toFirestoreUpdateMap(): Map<String, Any> =
-    mapOf<String, Any?>(
+internal fun ClipSegment.toFirestoreUpdateMap(): Map<String, Any> {
+    val safeStart = startMs.coerceIn(0L, 86_399_000L)
+    val safeEnd = endMs.coerceIn(safeStart + 1L, 86_400_000L)
+    return mapOf<String, Any?>(
         "title" to title.trim().ifEmpty { "Klip Sorotan" }.take(200),
         "hookLine" to hookLine.take(300),
         "viralScore" to viralScore.toLong().coerceIn(0L, 100L),
         "rationale" to rationale.take(800),
         "captionText" to captionText.take(1500),
         "hashtags" to hashtags.take(400),
-        "startMs" to startMs.coerceIn(0L, 86_400_000L),
-        "endMs" to endMs.coerceIn(0L, 86_400_000L),
+        "startMs" to safeStart,
+        "endMs" to safeEnd,
         "aspectRatio" to aspectRatio.name,
         "tone" to tone.name,
         "videoFilter" to videoFilter.name,
@@ -274,17 +307,19 @@ internal fun ClipSegment.toFirestoreUpdateMap(): Map<String, Any> =
         "transitionStyle" to transitionStyle.name,
         "transitionDurationMs" to transitionDurationMs.coerceIn(100L, 3_000L),
         "includeAudio" to includeAudio,
-        "selectedMusicTrackId" to selectedMusicTrackId?.take(120),
-        "selectedMusicTitle" to selectedMusicTitle?.take(200),
-        "selectedMusicUrl" to selectedMusicUrl?.take(1000),
+        "selectedMusicTrackId" to selectedMusicTrackId?.trim()?.takeIf { it.isNotEmpty() }?.take(120),
+        "selectedMusicTitle" to selectedMusicTitle?.trim()?.takeIf { it.isNotEmpty() }?.take(200),
+        "selectedMusicUrl" to sanitizeCloudUriOrNull(selectedMusicUrl),
         "musicVolume" to musicVolume.toDouble().coerceIn(0.0, 1.0),
-        "audioMoodLabel" to audioMoodLabel?.take(80),
+        "audioMoodLabel" to audioMoodLabel?.trim()?.takeIf { it.isNotEmpty() }?.take(80),
         "audioBpm" to audioBpm?.toLong()?.coerceIn(30L, 300L),
         "exportQuality" to exportQuality.name,
+        "includeWatermark" to includeWatermark,
         "favorite" to isFavorite,
         "placeholderAi" to isPlaceholderAi,
         "updatedAt" to FieldValue.serverTimestamp()
     ).filterValues { it != null }.mapValues { it.value!! }
+}
 
 internal fun ExportedClip.toFirestoreCreateMap(
     userId: String,
@@ -297,11 +332,11 @@ internal fun ExportedClip.toFirestoreCreateMap(
         "localProjectId" to projectId.coerceAtLeast(0L),
         "localSegmentId" to segmentId.coerceAtLeast(0L),
         "title" to title.trim().ifEmpty { "Klip Ekspor" }.take(200),
-        "filePath" to filePath.trim().ifEmpty { "exports/clip.mp4" }.take(1000),
+        "filePath" to filePath.trim().replace("..", "_").ifEmpty { "exports/clip.mp4" }.take(1000),
         "durationMs" to durationMs.coerceIn(0L, 86_400_000L),
         "fileSizeBytes" to fileSizeBytes.coerceAtLeast(0L),
         "aspectRatio" to aspectRatio.name,
-        "galleryUri" to galleryUri?.take(1000),
+        "galleryUri" to sanitizeGalleryUriOrNull(galleryUri),
         "createdAt" to FieldValue.serverTimestamp(),
         "updatedAt" to FieldValue.serverTimestamp()
     ).filterValues { it != null }.mapValues { it.value!! }
@@ -309,10 +344,10 @@ internal fun ExportedClip.toFirestoreCreateMap(
 internal fun ExportedClip.toFirestoreUpdateMap(): Map<String, Any> =
     mapOf<String, Any?>(
         "title" to title.trim().ifEmpty { "Klip Ekspor" }.take(200),
-        "filePath" to filePath.trim().ifEmpty { "exports/clip.mp4" }.take(1000),
+        "filePath" to filePath.trim().replace("..", "_").ifEmpty { "exports/clip.mp4" }.take(1000),
         "durationMs" to durationMs.coerceIn(0L, 86_400_000L),
         "fileSizeBytes" to fileSizeBytes.coerceAtLeast(0L),
         "aspectRatio" to aspectRatio.name,
-        "galleryUri" to galleryUri?.take(1000),
+        "galleryUri" to sanitizeGalleryUriOrNull(galleryUri),
         "updatedAt" to FieldValue.serverTimestamp()
     ).filterValues { it != null }.mapValues { it.value!! }

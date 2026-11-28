@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -67,8 +68,10 @@ import coil.compose.AsyncImage
 import com.example.R
 import com.example.domain.model.ClipProject
 import com.example.domain.model.ClipSegment
+import com.example.domain.model.UndoHistoryUiState
 import com.example.domain.model.VideoFilterPreset
 import com.example.ui.components.AiDemoNoticeBanner
+import com.example.ui.components.GlobalUndoRedoControls
 import com.example.ui.components.formatDurationShort
 import com.example.ui.theme.ActionButtonGradient
 import com.example.ui.theme.BannerHighlightGradient
@@ -88,9 +91,14 @@ fun ProjectsScreen(
     selectedProjectId: Long?,
     segments: List<ClipSegment>,
     isExporting: Boolean,
+    undoState: UndoHistoryUiState = UndoHistoryUiState(),
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
     onSelectProject: (Long) -> Unit,
     onEditSegment: (Long) -> Unit,
     onExportSegment: (ClipSegment) -> Unit,
+    onEnqueueSegment: (ClipSegment) -> Unit = {},
+    onEnqueueAllSegments: () -> Unit = {},
     onToggleFavorite: (ClipSegment) -> Unit,
     onBookmarkAllFavorites: () -> Unit,
     onMergeAllWithTransitions: () -> Unit = {},
@@ -131,7 +139,8 @@ fun ProjectsScreen(
                             Text(
                                 text = stringResource(R.string.clips_screen_title),
                                 style = MaterialTheme.typography.headlineMedium,
-                                color = Color.White
+                                color = Color.White,
+                                modifier = Modifier.weight(1f)
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -156,6 +165,15 @@ fun ProjectsScreen(
                                     modifier = Modifier.minimumInteractiveComponentSize()
                                 )
                             }
+                        }
+
+                        if (undoState.canUndo || undoState.canRedo) {
+                            GlobalUndoRedoControls(
+                                undoState = undoState,
+                                onUndo = onUndo,
+                                onRedo = onRedo,
+                                showActionLabel = true
+                            )
                         }
 
                         if (projects.size > 1) {
@@ -272,8 +290,10 @@ fun ProjectsScreen(
                         RankedClipRowCard(
                             rank = index + 1,
                             segment = segment,
+                            canEnqueue = selectedProject?.hasPlayableStream == true,
                             thumbnailUrl = selectedProject?.thumbnailUrl,
                             onEdit = { onEditSegment(segment.id) },
+                            onEnqueue = { onEnqueueSegment(segment) },
                             onToggleFavorite = { onToggleFavorite(segment) }
                         )
                     }
@@ -341,6 +361,30 @@ fun ProjectsScreen(
                                 )
                             }
 
+                            if (selectedProject?.hasPlayableStream == true) {
+                                OutlinedButton(
+                                    onClick = onEnqueueAllSegments,
+                                    border = BorderStroke(1.dp, FuturisticCyan.copy(alpha = 0.7f)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(50.dp)
+                                        .testTag("enqueue_all_clips_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.QueuePlayNext,
+                                        contentDescription = null,
+                                        tint = FuturisticCyan,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.export_queue_enqueue_all_cta),
+                                        color = FuturisticCyan
+                                    )
+                                }
+                            }
+
                             if (segments.size >= 2 && selectedProject?.hasPlayableStream == true) {
                                 OutlinedButton(
                                     onClick = onMergeAllWithTransitions,
@@ -377,8 +421,10 @@ fun ProjectsScreen(
 private fun RankedClipRowCard(
     rank: Int,
     segment: ClipSegment,
+    canEnqueue: Boolean,
     thumbnailUrl: String?,
     onEdit: () -> Unit,
+    onEnqueue: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
     Card(
@@ -493,6 +539,21 @@ private fun RankedClipRowCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+
+            if (canEnqueue) {
+                IconButton(
+                    onClick = onEnqueue,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("enqueue_clip_button_${segment.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.QueuePlayNext,
+                        contentDescription = stringResource(R.string.export_queue_enqueue_cta),
+                        tint = FuturisticCyan
+                    )
+                }
             }
 
             IconButton(

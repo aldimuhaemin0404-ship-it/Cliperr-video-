@@ -27,6 +27,9 @@ class BatchQueueViewModelTest {
         vm.updateBatchPlatform(TargetPlatform.YOUTUBE_SHORTS)
         vm.updateBatchFilter(VideoFilterPreset.VIVID)
         vm.updateBatchAutoExport(false)
+        assertFalse(vm.batchConfig.value.includeWatermark)
+        vm.updateBatchWatermark(true)
+        assertTrue(vm.batchConfig.value.includeWatermark)
 
         vm.enqueueGalleryVideos(
             listOf(
@@ -43,6 +46,7 @@ class BatchQueueViewModelTest {
         assertTrue(queue.all { it.status == BatchItemStatus.QUEUED })
         assertTrue(queue.all { it.targetPlatform == TargetPlatform.YOUTUBE_SHORTS })
         assertTrue(queue.all { it.videoFilter == VideoFilterPreset.VIVID })
+        assertTrue(queue.all { it.includeWatermark })
         assertFalse(queue.first().autoExportTopClip)
         assertFalse(queue[0].isSocialLink)
         assertTrue(queue[2].isSocialLink)

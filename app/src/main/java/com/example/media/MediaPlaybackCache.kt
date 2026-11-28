@@ -54,37 +54,53 @@ object MediaPlaybackCache {
         }
     }
 
+    private const val CHROME_MOBILE_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+
+    fun buildHttpDataSourceFactory(): DefaultHttpDataSource.Factory {
+        return DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+            .setUserAgent(CHROME_MOBILE_USER_AGENT)
+    }
+
     fun buildCacheDataSourceFactory(context: Context): CacheDataSource.Factory {
         val appContext = context.applicationContext
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(false)
-            .setConnectTimeoutMs(8_000)
-            .setReadTimeoutMs(10_000)
-            .setUserAgent("AldiAIClipper/1.0")
-
-        val upstreamFactory = DefaultDataSource.Factory(appContext, httpFactory)
+        val upstreamFactory = DefaultDataSource.Factory(appContext, buildHttpDataSourceFactory())
         return CacheDataSource.Factory()
             .setCache(getCache(appContext))
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
-    fun buildFastExoPlayer(context: Context): ExoPlayer {
+    fun buildDirectMediaSourceFactory(context: Context): DefaultMediaSourceFactory {
+        val appContext = context.applicationContext
+        val dataSourceFactory = DefaultDataSource.Factory(appContext, buildHttpDataSourceFactory())
+        return DefaultMediaSourceFactory(dataSourceFactory)
+    }
+
+    fun buildFastExoPlayer(context: Context, bypassCache: Boolean = false): ExoPlayer {
         val appContext = context.applicationContext
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                12_000, // minBufferMs
-                36_000, // maxBufferMs
-                350,    // bufferForPlaybackMs — instant start (<0.4s)
-                850     // bufferForPlaybackAfterRebufferMs
+                10_000, // minBufferMs
+                30_000, // maxBufferMs
+                300,    // bufferForPlaybackMs — quick start
+                800     // bufferForPlaybackAfterRebufferMs
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
         val renderersFactory = DefaultRenderersFactory(appContext)
+            .setEnableDecoderFallback(true)
             .forceEnableMediaCodecAsynchronousQueueing()
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(buildCacheDataSourceFactory(appContext))
+        val mediaSourceFactory = if (bypassCache) {
+            buildDirectMediaSourceFactory(appContext)
+        } else {
+            DefaultMediaSourceFactory(buildCacheDataSourceFactory(appContext))
+        }
 
         return ExoPlayer.Builder(appContext, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)

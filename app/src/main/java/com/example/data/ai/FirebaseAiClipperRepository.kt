@@ -432,7 +432,7 @@ class FirebaseAiClipperRepository : AiClipperRepository {
         } catch (e: Exception) {
             Log.e(TAG, "$operation failed", e)
             throw IllegalStateException(
-                e.localizedMessage ?: "Gagal menghubungi layanan Firebase AI Logic.",
+                "Layanan Gemini AI sedang sibuk. Mencoba ulang secara otomatis…",
                 e
             )
         }

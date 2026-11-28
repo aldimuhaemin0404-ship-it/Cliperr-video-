@@ -213,4 +213,28 @@
     <string name="auth_feature_security">Terlindungi oleh Google Sign-In &amp; Firebase App Check</string>
     <string name="account_sign_out">Keluar</string>
     <string name="cloud_sync_active">Cloud Sync Aktif</string>
+
+    <!-- Global Undo / Redo -->
+    <string name="action_undo">Urungkan</string>
+    <string name="action_redo">Ulangi</string>
+    <string name="undo_history_empty">Belum ada riwayat edit</string>
+
+    <!-- Background Export Render Queue -->
+    <string name="export_queue_tab_render">Render Ekspor</string>
+    <string name="export_queue_tab_ai">Impor &amp; AI</string>
+    <string name="export_queue_enqueue_cta">Antrekan Ekspor (Latar Belakang)</string>
+    <string name="export_queue_enqueue_all_cta">Antrekan Semua Klip ke Render</string>
+    <string name="export_queue_empty_title">Antrean Render Masih Kosong</string>
+    <string name="export_queue_empty_subtitle">Tekan tombol Antrekan Ekspor di Editor, Pengaturan Ekspor, atau Daftar Klip agar video dirender di latar belakang selagi Anda mengedit klip lainnya.</string>
+    <string name="export_queue_banner_title">Render Latar Belakang</string>
+    <string name="export_queue_view_action">Antrean</string>
+    <string name="export_queue_clear_done">Bersihkan Selesai</string>
+    <string name="export_queue_open_exports">Lihat Galeri</string>
+
+    <!-- Watermark Option -->
+    <string name="watermark_section_title">Watermark Video</string>
+    <string name="watermark_none_label">Tanpa Watermark</string>
+    <string name="watermark_none_desc">Video bersih tanpa logo</string>
+    <string name="watermark_brand_label">Dengan Watermark</string>
+    <string name="watermark_brand_desc">Badge Aldi AI Clipper</string>
 </resources>
